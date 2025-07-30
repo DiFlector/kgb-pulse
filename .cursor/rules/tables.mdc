@@ -1,0 +1,126 @@
+---
+alwaysApply: true
+---
+
+## КРИТИЧЕСКИ ВАЖНО:
+
+Базу данных не трогай!@01_init.sql @PROJECT_STRUCTURE.md ! Если нужно что-то изменить - Изменяй в коде, но не в бд! Запомни это!
+
+### Основные таблицы
+
+1. **users** - Пользователи системы
+   - `oid` (SERIAL, PK) - Внутренний ID, вешний ключ
+   - `userid` (INTEGER, UNIQUE) - Номер спортсмена
+   - `email` (TEXT, UNIQUE) - Email адрес
+   - `password` (TEXT) - Пароль
+   - `fio` (TEXT) - ФИО
+   - `sex` (VARCHAR(1)) - Пол ('М'/'Ж')
+   - `telephone` (TEXT, UNIQUE) - Телефон
+   - `birthdata` (DATE) - Дата рождения
+   - `country` (TEXT) - Страна
+   - `city` (TEXT) - Город
+   - `accessrights` (rights) - Права доступа (по умолчанию 'Sportsman')
+   - `boats` (boats[]) - Массив типов лодок
+   - `sportzvanie` (sportzvanias) - Спортивное звание (по умолчанию 'БР')
+
+2. **meros** - Мероприятия
+   - `oid` (SERIAL, PK) - Внутренний ID, внешний ключ
+   - `champn` (INTEGER, UNIQUE) - Пользовательский номер мероприятия
+   - `merodata` (TEXT) - Дата проведения
+   - `meroname` (TEXT) - Название мероприятия
+   - `class_distance` (JSONB) - Классы, дистанции, пол, возрастные группы (пример: {"K-1": {"sex": ["M", "W"], "dist": ["200, 500, 1000", "200, 500, 1000"], "age_group": ["группа 1: 27-49", "группа 1: 27-49"]}})
+   - `defcost` (NUMERIC(10,2)) - Базовая стоимость
+   - `filepolojenie` (TEXT) - Файл положения
+   - `fileprotokol` (TEXT) - Файл протокола
+   - `fileresults` (TEXT) - Файл результатов
+   - `status` (merostat) - Статус мероприятия
+   - `created_by` (INTEGER) - Создатель (ссылка на users.oid)
+
+3. **listreg** - Регистрации на мероприятия
+   - `oid` (SERIAL, PK) - Внутренний ID
+   - `users_oid` (INTEGER) - Участник (ссылка на users.oid)
+   - `meros_oid` (INTEGER) - Мероприятие (ссылка на meros.oid)
+   - `teams_oid` (INTEGER) - Команда (ссылка на teams.oid)
+   - `discipline` (JSONB) - Выбранные классы и дистанции участника (пример: {"K-1": {"sex": ["M"], "dist": ["200, 500, 1000"]}})
+   - `oplata` (BOOLEAN) - Оплачено (по умолчанию FALSE)
+   - `cost` (NUMERIC(10,2)) - Стоимость участия (по умолчанию 0)
+   - `status` (statuses) - Статус регистрации
+   - `role` (TEXT) - Роль в команде (по умолчанию 'member')
+
+4. **teams** - Команды
+   - `oid` (SERIAL, PK) - Внутренний ID
+   - `teamid` (INTEGER, UNIQUE) - ID команды
+   - `teamname` (TEXT) - Название команды
+   - `team_name` (TEXT) - Дублирующее поле для совместимости
+   - `teamcity` (TEXT) - Город команды
+   - `persons_amount` (INTEGER) - Количество участников (по умолчанию 0)
+   - `persons_all` (INTEGER) - Общее количество мест (по умолчанию 14)
+   - `another_team` (INTEGER) - Связанная команда
+   - `class` (TEXT) - Класс лодки для команды
+
+5. **user_statistic** - Статистика пользователей
+   - `oid` (SERIAL, PK) - Внутренний ID
+   - `meroname` (TEXT) - Название мероприятия
+   - `place` (TEXT) - Занятое место
+   - `time` (TIME) - Время результата
+   - `team` (TEXT) - Команда
+   - `data` (DATE) - Дата соревнования
+   - `race_type` (TEXT) - Тип гонки
+   - `users_oid` (INTEGER) - Пользователь (ссылка на users.oid)
+
+### Служебные таблицы
+
+1. **notifications** - Уведомления
+   - `oid` (SERIAL, PK) - Внутренний ID
+   - `userid` (INTEGER) - Пользователь (ссылка на users.oid)
+   - `type` (notification_type) - Тип уведомления
+   - `title` (TEXT) - Заголовок уведомления
+   - `message` (TEXT) - Текст сообщения
+   - `is_read` (BOOLEAN) - Прочитано (по умолчанию FALSE)
+   - `created_at` (TIMESTAMP) - Время создания
+   - `email_sent` (BOOLEAN) - Email отправлен (по умолчанию FALSE)
+
+2. **login_attempts** - Попытки входа
+   - `oid` (SERIAL, PK) - Внутренний ID
+   - `users_oid` (INTEGER) - Пользователь (ссылка на users.oid)
+   - `ip` (VARCHAR(45)) - IP-адрес
+   - `success` (BOOLEAN) - Успешный вход
+   - `attempt_time` (TIMESTAMP) - Время попытки
+
+3. **user_actions** - Действия пользователей
+   - `oid` (SERIAL, PK) - Внутренний ID
+   - `users_oid` (INTEGER) - Пользователь (ссылка на users.oid)
+   - `action` (TEXT) - Описание действия
+   - `ip_address` (VARCHAR(45)) - IP-адрес
+   - `created_at` (TIMESTAMP) - Время действия
+
+4. **system_events** - Системные события
+   - `oid` (SERIAL, PK) - Внутренний ID
+   - `event_type` (VARCHAR(50)) - Тип события
+   - `description` (TEXT) - Описание события
+   - `severity` (VARCHAR(20)) - Уровень важности
+   - `created_at` (TIMESTAMP) - Время события
+
+### Индексы для оптимизации
+
+#### Основные таблицы
+- `idx_users_email` - users(email)
+- `idx_users_telephone` - users(telephone)
+- `idx_users_accessrights` - users(accessrights)
+- `idx_listreg_userid` - listreg(userid)
+- `idx_listreg_champn` - listreg(champn)
+- `idx_listreg_status` - listreg(status)
+- `idx_meros_status` - meros(status)
+- `idx_meros_created_by` - meros(created_by)
+- `idx_user_statistic_userid` - user_statistic(userid)
+- `idx_user_statistic_data` - user_statistic(data)
+
+#### Служебные таблицы
+- `idx_notifications_userid` - notifications(userid)
+- `idx_notifications_is_read` - notifications(is_read)
+- `idx_login_attempts_ip_time` - login_attempts(ip, attempt_time)
+- `idx_login_attempts_userid` - login_attempts(userid)
+- `idx_user_actions_userid` - user_actions(userid)
+- `idx_user_actions_created_at` - user_actions(created_at)
+- `idx_system_events_type_time` - system_events(event_type, created_at)
+- `idx_system_events_severity` - system_events(severity)

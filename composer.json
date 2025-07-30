@@ -1,0 +1,27 @@
+{
+    "name": "kupavna/pulse-rowing-base",
+    "description": "Веб-приложение для управления соревнованиями по гребле",
+    "type": "project",
+    "require": {
+        "php": ">=8.2",
+        "phpmailer/phpmailer": "^6.8",
+        "twig/twig": "^3.7",
+        "predis/predis": "^2.2",
+        "vlucas/phpdotenv": "^5.5",
+        "phpoffice/phpspreadsheet": "^1.29"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Pulse\\": "lks/php/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+} 

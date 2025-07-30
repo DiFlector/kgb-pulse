@@ -1,0 +1,1 @@
+docker-compose build nginx && docker-compose restart nginx

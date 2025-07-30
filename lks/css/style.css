@@ -1,0 +1,297 @@
+/* === СТИЛИ ДЛЯ АВТОРИЗОВАННЫХ СТРАНИЦ === */
+/* Для авторизованных страниц с sidebar */
+body.authenticated-page {
+    height: 100vh;
+    overflow: hidden; /* Предотвращаем прокрутку body только для авторизованных */
+}
+
+/* Когда открыто модальное окно, не блокируем body полностью */
+body.modal-open {
+    overflow: hidden !important;
+    padding-right: 0 !important; /* Убираем padding от Bootstrap */
+}
+
+/* === MODERN MATERIAL DESIGN HEADER === */
+/* Для авторизованных страниц */
+body.authenticated-page .navbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 75px;
+    /* Современный градиент Material Design */
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    box-shadow: 
+        0 2px 10px rgba(0, 0, 0, 0.12),
+        0 1px 20px rgba(0, 0, 0, 0.08);
+    z-index: 1000;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Альтернативные цветовые схемы для разных ролей */
+body[data-user-role="Admin"] .navbar {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+body[data-user-role="Organizer"] .navbar {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+body[data-user-role="Secretary"] .navbar {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+body[data-user-role="Sportsman"] .navbar {
+    background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+}
+
+body[data-user-role="SuperUser"] .navbar {
+    background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+}
+
+/* Стили для элементов navbar */
+.navbar .container-fluid {
+    padding: 0 2rem;
+}
+
+.navbar .navbar-brand {
+    color: #fff !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    text-decoration: none;
+}
+
+.navbar .navbar-brand:hover {
+    transform: scale(1.02);
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.navbar .navbar-brand img {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    filter: brightness(1.1);
+}
+
+.navbar .navbar-brand:hover img {
+    transform: scale(1.05);
+    filter: brightness(1.2) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+}
+
+.navbar .navbar-brand .fw-bold {
+    font-weight: 600 !important;
+    letter-spacing: 0.5px;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.navbar .navbar-brand small {
+    opacity: 0.9;
+    font-weight: 400;
+    letter-spacing: 0.3px;
+}
+
+/* Стили для кнопок в header */
+.navbar .btn {
+    color: #fff !important;
+    border: 2px solid rgba(255, 255, 255, 0.2) !important;
+    background: rgba(255, 255, 255, 0.1) !important;
+    backdrop-filter: blur(10px);
+    border-radius: 12px !important;
+    padding: 0.5rem 1rem !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    font-weight: 500 !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.navbar .btn:hover {
+    background: rgba(255, 255, 255, 0.2) !important;
+    border-color: rgba(255, 255, 255, 0.4) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.navbar .btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+/* Специальные стили для кнопки меню */
+#sidebarToggle {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50% !important;
+    background: rgba(255, 255, 255, 0.15) !important;
+    border: none !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#sidebarToggle:hover {
+    background: rgba(255, 255, 255, 0.25) !important;
+    transform: scale(1.05);
+}
+
+#sidebarToggle i {
+    font-size: 1.2rem;
+    color: #fff;
+}
+
+/* Стили для dropdown кнопок */
+.navbar .dropdown-toggle::after {
+    border: none !important;
+    content: "▼" !important;
+    font-size: 0.7rem !important;
+    margin-left: 0.5rem !important;
+    opacity: 0.8 !important;
+    transition: all 0.3s ease !important;
+}
+
+.navbar .dropdown-toggle[aria-expanded="true"]::after {
+    transform: rotate(180deg) !important;
+}
+
+/* Стили для бейджа уведомлений */
+.notifications .badge {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    min-width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    font-size: 0.75rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+    border: 2px solid #fff;
+    box-shadow: 0 2px 8px rgba(255, 107, 107, 0.4);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 2px 8px rgba(255, 107, 107, 0.4);
+    }
+    50% {
+        box-shadow: 0 2px 8px rgba(255, 107, 107, 0.6), 0 0 0 4px rgba(255, 107, 107, 0.2);
+    }
+    100% {
+        box-shadow: 0 2px 8px rgba(255, 107, 107, 0.4);
+    }
+}
+
+/* Улучшенные стили для dropdown меню */
+.navbar .dropdown-menu {
+    border: none !important;
+    border-radius: 16px !important;
+    box-shadow: 
+        0 10px 40px rgba(0, 0, 0, 0.12),
+        0 2px 8px rgba(0, 0, 0, 0.08) !important;
+    background: rgba(255, 255, 255, 0.95) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    padding: 0.75rem 0 !important;
+    margin-top: 0.5rem !important;
+    animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.navbar .dropdown-item {
+    padding: 0.75rem 1.5rem !important;
+    color: #333 !important;
+    font-weight: 500 !important;
+    border-radius: 0 !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+.navbar .dropdown-item:hover {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%) !important;
+    color: #333 !important;
+    transform: translateX(4px);
+}
+
+.navbar .dropdown-item i {
+    width: 20px;
+    text-align: center;
+    margin-right: 0.5rem;
+    opacity: 0.7;
+}
+
+.navbar .dropdown-divider {
+    margin: 0.5rem 1rem !important;
+    border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Специальные стили для уведомлений dropdown */
+.notifications .dropdown-menu {
+    min-width: 350px !important;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.notification-item {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    transition: all 0.2s ease;
+}
+
+.notification-item:hover {
+    background: rgba(102, 126, 234, 0.05);
+}
+
+.notification-item:last-child {
+    border-bottom: none;
+}
+
+.notification-title {
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+    color: #333;
+}
+
+.notification-message {
+    color: #666;
+    font-size: 16px;
+    margin-bottom: 5px;
+    line-height: 1.4;
+}
+
+.notification-time {
+    color: #999;
+    font-size: 14px;
+    text-align: right;
+}
+
+/* Адаптивность для мобильных устройств */
+@media (max-width: 768px) {
+    .navbar .container-fluid {
+        padding: 0 1rem;
+    }
+    
+    .navbar .navbar-brand .fw-bold {
+        font-size: 1rem;
+    }
+    
+    .navbar .navbar-brand small {
+        font-size: 0.75rem;
+    }
+    
+    .notifications .dropdown-menu {
+        min-width: 300px !important;
+    }
+} 

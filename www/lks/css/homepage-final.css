@@ -1,0 +1,115 @@
+/* ОКОНЧАТЕЛЬНЫЕ CSS ПРАВИЛА ДЛЯ ГЛАВНОЙ СТРАНИЦЫ */
+
+/* Базовые правила для HTML */
+html {
+    overflow: auto;
+    overflow-y: scroll;
+    height: auto;
+    max-height: none;
+    min-height: 100vh;
+}
+
+/* Правила специально для главной страницы */
+body.homepage-body {
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: 100vh !important;
+    overflow: auto !important;
+    overflow-y: scroll !important;
+    height: auto !important;
+    max-height: none !important;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+    background-color: #f8f9fa !important;
+    font-size: 16px !important; /* Увеличен базовый размер шрифта на 2px */
+}
+
+/* Переопределяем стили основного CSS файла */
+body.homepage-body:not(.authenticated-page) {
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: 100vh !important;
+}
+
+/* Навигация для главной страницы */
+body.homepage-body .navbar.fixed-top {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    height: 75px !important;
+    background-color: #343a40 !important;
+    z-index: 1030 !important;
+}
+
+/* Main контент - ключевое правило для footer */
+body.homepage-body main {
+    flex: 1 0 auto !important; /* flex-grow: 1, flex-shrink: 0, flex-basis: auto */
+    margin-top: 75px !important;
+    padding-top: 0 !important;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+}
+
+/* Footer - закрепляем внизу с максимальным приоритетом */
+body.homepage-body footer,
+body.homepage-body:not(.authenticated-page) footer {
+    position: static !important;
+    background-color: #343a40 !important;
+    color: #fff !important;
+    padding: 2rem 0 !important;
+    margin-top: auto !important;
+    flex-shrink: 0 !important;
+    width: 100% !important;
+}
+
+body.homepage-body footer a,
+body.homepage-body:not(.authenticated-page) footer a {
+    color: #fff !important;
+    text-decoration: none !important;
+}
+
+body.homepage-body footer a:hover,
+body.homepage-body:not(.authenticated-page) footer a:hover {
+    color: #adb5bd !important;
+}
+
+/* Hero секция */
+body.homepage-body .hero {
+    padding: 3rem 0;
+}
+
+/* Секции контента */
+body.homepage-body section {
+    overflow: visible;
+    height: auto;
+    max-height: none;
+}
+
+/* Контейнеры */
+body.homepage-body .container {
+    overflow: visible;
+    height: auto;
+    max-height: none;
+}
+
+/* Карточки */
+body.homepage-body .card {
+    overflow: hidden;
+}
+
+/* Убираем ограничения высоты */
+body.homepage-body * {
+    max-height: none;
+}
+
+/* Исключения для элементов с overflow */
+body.homepage-body .navbar,
+body.homepage-body .card,
+body.homepage-body .btn,
+body.homepage-body .form-control,
+body.homepage-body .alert,
+body.homepage-body .dropdown-menu,
+body.homepage-body .modal {
+    overflow: revert;
+} 

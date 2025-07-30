@@ -1,0 +1,1 @@
+docker exec -i pulse_postgres_1 psql -U pulse_user -d pulse_rowing_db < data/db/02_seed_users.sql

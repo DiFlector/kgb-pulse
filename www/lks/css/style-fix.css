@@ -1,0 +1,116 @@
+/* CSS Fix для неавторизованных страниц */
+
+/* Общие стили для навигации */
+.navbar {
+    background-color: rgba(52, 58, 64, 0.95) !important;
+    backdrop-filter: blur(10px) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+    height: 75px !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 1030 !important;
+}
+
+/* Общие исправления для мобильного меню */
+@media (max-width: 991.98px) {
+    /* Исправление позиционирования мобильного меню */
+    .navbar-collapse {
+        position: absolute !important;
+        top: 100% !important;
+        left: 0 !important;
+        right: 0 !important;
+        z-index: 1000 !important;
+        background: rgba(52, 58, 64, 0.98) !important;
+        backdrop-filter: blur(10px) !important;
+        border-radius: 10px !important;
+        margin-top: 1rem !important;
+        padding: 1rem !important;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2) !important;
+    }
+    
+    /* Центрирование элементов меню */
+    .navbar-nav {
+        text-align: center !important;
+    }
+    
+    /* Стили для ссылок в мобильном меню */
+    .navbar-nav .nav-link {
+        padding: 0.75rem 1rem !important;
+        border-radius: 8px !important;
+        margin: 0.25rem 0 !important;
+        color: rgba(255, 255, 255, 0.9) !important;
+    }
+    
+    .navbar-nav .nav-link:hover {
+        background-color: rgba(255, 255, 255, 0.1) !important;
+        color: white !important;
+    }
+    
+    /* Убираем hover-эффекты на мобильных */
+    .navbar-nav .nav-link {
+        transition: none !important;
+    }
+}
+
+/* Исправления для форм входа и регистрации */
+.login-container,
+.register-container {
+    transition: none !important;
+}
+
+.login-container:hover,
+.register-container:hover {
+    transform: none !important;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Убираем hover-эффекты для карточек */
+.card {
+    transition: none !important;
+}
+
+.card:hover {
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+/* Исправления для кнопок */
+.btn {
+    transition: none !important;
+}
+
+.btn:hover {
+    transform: none !important;
+}
+
+/* Исправления для навигации */
+.navbar-nav .nav-link {
+    transition: none !important;
+}
+
+.navbar-nav .nav-link:hover {
+    background-color: transparent !important;
+    transform: none !important;
+}
+
+/* Дополнительные исправления для мобильных устройств */
+@media (max-width: 576px) {
+    /* Уменьшаем отступы на мобильных */
+    .login-container,
+    .register-container {
+        margin: 1rem !important;
+    }
+    
+    .login-body,
+    .register-body {
+        padding: 1.5rem !important;
+    }
+    
+    /* Исправляем размеры шрифтов */
+    .login-header h4,
+    .register-header h4 {
+        font-size: 1.25rem !important;
+    }
+} 

@@ -1,0 +1,445 @@
+/* Основные стили для страницы протоколов */
+.protocols-container {
+    padding: 20px;
+    background-color: #f8f9fa;
+    min-height: calc(100vh - 60px); /* Уменьшаем отступ от меню */
+}
+
+/* Панель информации о мероприятии */
+.event-info-panel {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    border-left: 4px solid #007bff;
+}
+
+.event-info-panel h4 {
+    color: #333;
+    margin-bottom: 15px;
+}
+
+.event-info-panel p {
+    margin-bottom: 8px;
+    color: #666;
+}
+
+.event-info-panel strong {
+    color: #333;
+}
+
+/* Основной контент протоколов */
+.protocols-content {
+    margin-top: 20px;
+}
+
+/* Панели протоколов */
+.protocol-panel {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.protocol-panel.start-protocols {
+    border-left: 4px solid #3498db;
+}
+
+.protocol-panel.finish-protocols {
+    border-left: 4px solid #e74c3c;
+}
+
+.protocol-panel h3 {
+    color: #333;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #e9ecef;
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 10;
+}
+
+.protocol-panel.start-protocols h3 {
+    border-bottom-color: #3498db;
+}
+
+.protocol-panel.finish-protocols h3 {
+    border-bottom-color: #e74c3c;
+}
+
+.protocol-panel h3 i {
+    color: #3498db;
+}
+
+.protocol-panel.finish-protocols h3 i {
+    color: #e74c3c;
+}
+
+.protocol-panel .protocols-content {
+    margin-top: 0;
+}
+
+/* Группы протоколов */
+.protocol-group {
+    margin-bottom: 30px;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.discipline-title {
+    background: #f8f9fa;
+    padding: 15px 20px;
+    margin: 0;
+    font-size: 1.1rem;
+    color: #495057;
+    border-bottom: 1px solid #e9ecef;
+}
+
+/* Секции возрастных групп */
+.age-group-section {
+    border-bottom: 1px solid #e9ecef;
+    padding: 15px 20px;
+}
+
+.age-group-section:last-child {
+    border-bottom: none;
+}
+
+.age-group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.age-group-header h5 {
+    margin: 0;
+    color: #495057;
+    font-size: 1rem;
+}
+
+.age-group-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.age-group-actions .btn {
+    font-size: 0.8rem;
+    padding: 4px 8px;
+}
+
+/* Контейнер таблицы протокола */
+.protocol-table-container {
+    background: white;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+/* Таблицы протоколов */
+.protocol-table {
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+.protocol-table thead th {
+    background: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+    font-weight: 600;
+    color: #495057;
+    padding: 10px 8px;
+    text-align: center;
+}
+
+.protocol-table tbody td {
+    padding: 8px;
+    vertical-align: middle;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.protocol-table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+/* Поля ввода в таблицах */
+.protocol-table input {
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+.protocol-table input:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0,123,255,0.25);
+}
+
+/* Специальные стили для полей ввода */
+.water-input {
+    width: 60px;
+}
+
+.place-input {
+    width: 60px;
+}
+
+.time-input {
+    width: 80px;
+}
+
+/* Стили для таблиц с большим количеством колонок */
+.protocol-table {
+    font-size: 0.85rem;
+}
+
+.protocol-table th,
+.protocol-table td {
+    padding: 6px 4px;
+    vertical-align: middle;
+}
+
+/* Стили для протоколов драконов (больше колонок) */
+.protocol-table.dragon-protocol {
+    font-size: 0.8rem;
+}
+
+.protocol-table.dragon-protocol th,
+.protocol-table.dragon-protocol td {
+    padding: 4px 2px;
+}
+
+/* Стили для колонок с фиксированной шириной */
+.protocol-table th:nth-child(1), /* Вода/Место */
+.protocol-table td:nth-child(1) {
+    width: 50px;
+    text-align: center;
+}
+
+.protocol-table th:nth-child(2), /* Номер спортсмена/Время финиша */
+.protocol-table td:nth-child(2) {
+    width: 80px;
+    text-align: center;
+}
+
+.protocol-table th:nth-child(3), /* ФИО/Вода */
+.protocol-table td:nth-child(3) {
+    width: 120px;
+}
+
+.protocol-table th:nth-child(4), /* Год рождения/Номер спортсмена */
+.protocol-table td:nth-child(4) {
+    width: 80px;
+    text-align: center;
+}
+
+.protocol-table th:nth-child(5), /* Возрастная группа/ФИО */
+.protocol-table td:nth-child(5) {
+    width: 100px;
+}
+
+.protocol-table th:nth-child(6), /* Спортивный разряд/Год рождения */
+.protocol-table td:nth-child(6) {
+    width: 80px;
+    text-align: center;
+}
+
+.protocol-table th:nth-child(7), /* Команда/Возрастная группа */
+.protocol-table td:nth-child(7) {
+    width: 80px;
+    text-align: center;
+}
+
+/* Дополнительные колонки для драконов */
+.protocol-table th:nth-child(8), /* Город команды/Спортивный разряд */
+.protocol-table td:nth-child(8) {
+    width: 100px;
+}
+
+.protocol-table th:nth-child(9), /* Название команды/Команда */
+.protocol-table td:nth-child(9) {
+    width: 120px;
+}
+
+.protocol-table th:nth-child(10), /* Город команды (финиш) */
+.protocol-table td:nth-child(10) {
+    width: 100px;
+}
+
+.protocol-table th:nth-child(11), /* Название команды (финиш) */
+.protocol-table td:nth-child(11) {
+    width: 120px;
+}
+
+/* Состояния загрузки и пустые состояния */
+.loading-spinner {
+    text-align: center;
+    padding: 40px;
+    color: #6c757d;
+}
+
+.loading-spinner i {
+    font-size: 2rem;
+    margin-bottom: 10px;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 40px;
+    color: #6c757d;
+}
+
+.empty-state i {
+    font-size: 3rem;
+    margin-bottom: 15px;
+    color: #dee2e6;
+}
+
+/* Drag & Drop стили */
+.protocol-tbody tr {
+    cursor: move;
+    transition: background-color 0.2s;
+}
+
+.protocol-tbody tr.dragging {
+    opacity: 0.5;
+    background-color: #e3f2fd;
+}
+
+.protocol-tbody tr.drag-over {
+    background-color: #f3e5f5;
+}
+
+/* Модальное окно */
+.modal-content {
+    border-radius: 8px;
+}
+
+.modal-header {
+    background: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.modal-title {
+    color: #495057;
+}
+
+/* Результаты поиска */
+.list-group-item {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.list-group-item:hover {
+    background-color: #f8f9fa;
+}
+
+.list-group-item strong {
+    color: #495057;
+}
+
+.list-group-item small {
+    color: #6c757d;
+}
+
+/* Кнопки */
+.btn-primary {
+    background-color: #007bff;
+    border-color: #007bff;
+}
+
+.btn-primary:hover {
+    background-color: #0056b3;
+    border-color: #0056b3;
+}
+
+.btn-outline-primary {
+    color: #007bff;
+    border-color: #007bff;
+}
+
+.btn-outline-primary:hover {
+    background-color: #007bff;
+    border-color: #007bff;
+}
+
+.btn-outline-success {
+    color: #28a745;
+    border-color: #28a745;
+}
+
+.btn-outline-success:hover {
+    background-color: #28a745;
+    border-color: #28a745;
+}
+
+.btn-outline-info {
+    color: #17a2b8;
+    border-color: #17a2b8;
+}
+
+.btn-outline-info:hover {
+    background-color: #17a2b8;
+    border-color: #17a2b8;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .protocols-container {
+        padding: 10px;
+    }
+    
+    .protocol-panel {
+        padding: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .age-group-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .age-group-actions {
+        flex-wrap: wrap;
+    }
+    
+    .protocol-table {
+        font-size: 0.8rem;
+    }
+    
+    .protocol-table input {
+        font-size: 0.8rem;
+        padding: 2px 4px;
+    }
+}
+
+/* Дополнительные стили для улучшения UX */
+.protocol-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.protocol-table input[type="number"]::-webkit-inner-spin-button,
+.protocol-table input[type="number"]::-webkit-outer-spin-button {
+    opacity: 1;
+}
+
+/* Анимации */
+.protocol-group {
+    transition: box-shadow 0.3s ease;
+}
+
+.protocol-group:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.age-group-section {
+    transition: background-color 0.2s ease;
+}
+
+.age-group-section:hover {
+    background-color: #f8f9fa;
+} 
