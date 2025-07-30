@@ -232,13 +232,23 @@ function getStatusInfo($status) {
                                                     <?php 
                                                     $trimmedStatus = trim($event['status']);
                                                     if ($trimmedStatus === 'Регистрация закрыта'): ?>
-                                                        <button class="btn btn-success btn-sm" onclick="selectDrawType(<?= $event['champn'] ?>)">
-                                                            <i class="bi bi-play-circle"></i> Начать судейство
-                                                        </button>
+                                                        <div class="btn-group btn-group-sm">
+                                                            <button class="btn btn-success btn-sm" onclick="selectDrawType(<?= $event['champn'] ?>)">
+                                                                <i class="bi bi-play-circle"></i> Начать судейство
+                                                            </button>
+                                                            <a href="conduct_event.php?event_id=<?= $event['champn'] ?>" class="btn btn-warning btn-sm">
+                                                                <i class="bi bi-shuffle"></i> Новая система
+                                                            </a>
+                                                        </div>
                                                     <?php elseif ($trimmedStatus === 'В процессе'): ?>
-                                                        <button class="btn btn-primary btn-sm" onclick="continueEvent(<?= $event['champn'] ?>)">
-                                                            <i class="bi bi-gear"></i> Продолжить
-                                                        </button>
+                                                        <div class="btn-group btn-group-sm">
+                                                            <button class="btn btn-primary btn-sm" onclick="continueEvent(<?= $event['champn'] ?>)">
+                                                                <i class="bi bi-gear"></i> Продолжить
+                                                            </button>
+                                                            <a href="conduct_event.php?event_id=<?= $event['champn'] ?>" class="btn btn-warning btn-sm">
+                                                                <i class="bi bi-shuffle"></i> Новая система
+                                                            </a>
+                                                        </div>
                                                     <?php elseif ($trimmedStatus === 'Результаты'): ?>
                                                         <div class="btn-group btn-group-sm">
                                                             <button class="btn btn-info" onclick="viewResults(<?= $event['champn'] ?>)">
