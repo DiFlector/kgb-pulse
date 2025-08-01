@@ -41,12 +41,15 @@ try {
                 // Создаем финишный протокол (копия стартового без результатов)
                 $finishProtocol = createFinishProtocol($startProtocol);
                 
+                // Используем полное название возрастной группы с названием и возрастным диапазоном
+                $ageGroupName = isset($ageGroup['full_name']) ? $ageGroup['full_name'] : $ageGroup['name'];
+                
                 // Сохраняем в файл
                 saveProtocolDataToFile(
                     $discipline['class'],
                     $discipline['sex'],
                     $discipline['distance'],
-                    $ageGroup['name'],
+                    $ageGroupName,
                     $startProtocol,
                     $finishProtocol
                 );
@@ -55,7 +58,7 @@ try {
                     'class' => $discipline['class'],
                     'sex' => $discipline['sex'],
                     'distance' => $discipline['distance'],
-                    'ageGroup' => $ageGroup['name'],
+                    'ageGroup' => $ageGroupName,
                     'participantsCount' => count($participants)
                 ];
                 
@@ -195,7 +198,9 @@ function getParticipantsForGroup($db, $meroId, $discipline, $ageGroup) {
                 $currentYear = date('Y');
                 $age = $currentYear - $birthYear;
                 
-                if (isInAgeGroup($age, $ageGroup['name'])) {
+                // Используем полное название возрастной группы с названием и возрастным диапазоном
+                $ageGroupName = isset($ageGroup['full_name']) ? $ageGroup['full_name'] : $ageGroup['name'];
+                if (isInAgeGroup($age, $ageGroupName)) {
                     $filteredParticipants[] = [
                         'id' => $participant['userid'],
                         'fio' => $participant['fio'],

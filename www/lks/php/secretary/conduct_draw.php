@@ -1,401 +1,294 @@
 <?php
+// Отключаем вывод ошибок в браузер
+error_reporting(E_ALL);
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+ini_set('error_log', __DIR__ . '/../../../logs/php_errors.log');
+
+// Начинаем буферизацию вывода
+ob_start();
+
 session_start();
 require_once __DIR__ . '/../common/Auth.php';
 require_once __DIR__ . '/../db/Database.php';
 
 // Проверка авторизации и прав доступа
 $auth = new Auth();
-if (!$auth->isAuthenticated() || !$auth->hasAnyRole(['Secretary', 'SuperUser', 'Admin'])) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'Доступ запрещен']);
+
+if (!$auth->isAuthenticated()) {
+    // Очищаем буфер и отправляем JSON
+    ob_end_clean();
+    http_response_code(401);
+    header('Content-Type: application/json');
+    echo json_encode(['success' => false, 'message' => 'Не авторизован']);
     exit;
 }
 
-// Получение данных из POST запроса
+if (!$auth->hasAnyRole(['Secretary', 'SuperUser', 'Admin'])) {
+    // Очищаем буфер и отправляем JSON
+    ob_end_clean();
+    http_response_code(403);
+    header('Content-Type: application/json');
+    echo json_encode(['success' => false, 'message' => 'Нет прав доступа']);
+    exit;
+}
+
+// Получение данных из запроса
 $input = json_decode(file_get_contents('php://input'), true);
 $meroId = $input['meroId'] ?? null;
+$autoCreate = $input['autoCreate'] ?? false; // Флаг для автоматического создания
 
 if (!$meroId) {
-    echo json_encode(['success' => false, 'message' => 'Не указан ID мероприятия']);
+    // Очищаем буфер и отправляем JSON
+    ob_end_clean();
+    header('Content-Type: application/json');
+    echo json_encode(['success' => false, 'message' => 'ID мероприятия не указан']);
     exit;
 }
 
-$db = Database::getInstance();
-$pdo = $db->getPDO();
-
 try {
-    // Получаем информацию о мероприятии
-    $stmt = $pdo->prepare("SELECT class_distance FROM meros WHERE oid = ?");
-    $stmt->execute([$meroId]);
-    $event = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!$event) {
-        echo json_encode(['success' => false, 'message' => 'Мероприятие не найдено']);
-        exit;
-    }
-
-    $classDistance = json_decode($event['class_distance'], true);
+    // Загружаем данные протоколов из JSON файла
+    $protocolsDir = __DIR__ . '/../../../files/json/protocols/';
+    $filename = $protocolsDir . "protocols_{$meroId}.json";
     
-    if (!$classDistance) {
-        echo json_encode(['success' => false, 'message' => 'Нет данных о дисциплинах']);
-        exit;
+    // Если файл протоколов не существует, сначала генерируем их
+    if (!file_exists($filename)) {
+        error_log("conduct_draw.php: Файл протоколов не найден, генерируем протоколы");
+        
+        // Генерируем протоколы автоматически
+        $protocolsData = generateProtocolsData($meroId);
+        
+        if (!$protocolsData) {
+            // Очищаем буфер и отправляем JSON
+            ob_end_clean();
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => 'Ошибка генерации протоколов']);
+            exit;
+        }
+        
+        // Сохраняем сгенерированные протоколы
+        if (!is_dir($protocolsDir)) {
+            mkdir($protocolsDir, 0755, true);
+        }
+        file_put_contents($filename, json_encode($protocolsData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        
+        error_log("conduct_draw.php: Протоколы сгенерированы и сохранены");
+    } else {
+        // Загружаем существующие протоколы
+        $jsonData = file_get_contents($filename);
+        $protocolsData = json_decode($jsonData, true);
+        
+        if (!$protocolsData) {
+            // Очищаем буфер и отправляем JSON
+            ob_end_clean();
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => 'Ошибка чтения файла протоколов']);
+            exit;
+        }
     }
-
-    // Получаем всех зарегистрированных участников мероприятия
-    $participants = getRegisteredParticipants($pdo, $meroId);
     
-    if (empty($participants)) {
-        echo json_encode(['success' => false, 'message' => 'Нет зарегистрированных участников']);
-        exit;
+    // Подключаемся к Redis
+    $redis = new Redis();
+    $redis->connect('redis', 6379);
+    
+    $drawConducted = false;
+    
+    // Проводим жеребьевку для каждой группы
+    foreach ($protocolsData as &$protocol) {
+        foreach ($protocol['ageGroups'] as &$ageGroup) {
+            if (!empty($ageGroup['participants'])) {
+                // Перемешиваем участников
+                shuffle($ageGroup['participants']);
+                
+                // Назначаем дорожки
+                $lane = 1;
+                foreach ($ageGroup['participants'] as &$participant) {
+                    $participant['lane'] = $lane++;
+                }
+                
+                // Отмечаем, что жеребьевка проведена
+                $ageGroup['drawConducted'] = true;
+                $ageGroup['drawConductedAt'] = date('Y-m-d H:i:s');
+                
+                // Сохраняем в Redis
+                $redis->setex($ageGroup['redisKey'], 86400, json_encode($ageGroup));
+                
+                $drawConducted = true;
+            }
+        }
     }
-
-    // Очищаем предыдущие данные протоколов для этого мероприятия
-    clearPreviousProtocolData($meroId);
     
-    // Распределяем участников по группам
-    $groupedParticipants = distributeParticipantsByGroups($participants, $classDistance, $meroId);
+    // Сохраняем обновленные данные в JSON файл
+    file_put_contents($filename, json_encode($protocolsData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
     
-    // Сохраняем данные протоколов
-    saveProtocolsData($meroId, $groupedParticipants);
-
-    // Подготавливаем данные для ответа
-    $responseData = [];
-    foreach ($groupedParticipants as $groupKey => $data) {
-        // Возвращаем полную структуру данных, а не только массив участников
-        $responseData[$groupKey] = $data;
-    }
-
+    // Очищаем буфер и отправляем JSON
+    ob_end_clean();
+    header('Content-Type: application/json');
     echo json_encode([
         'success' => true,
-        'message' => 'Жеребьевка проведена успешно',
-        'totalParticipants' => count($participants),
-        'totalGroups' => count($groupedParticipants),
-        'protocols' => $responseData
+        'message' => $drawConducted ? 'Жеребьевка проведена успешно' : 'Нет участников для жеребьевки',
+        'protocols' => $protocolsData,
+        'drawConducted' => $drawConducted
     ]);
-
-} catch (Exception $e) {
-    error_log("Ошибка проведения жеребьевки: " . $e->getMessage());
-    echo json_encode(['success' => false, 'message' => 'Ошибка сервера: ' . $e->getMessage()]);
-}
-
-/**
- * Получение всех зарегистрированных участников мероприятия
- */
-function getRegisteredParticipants($pdo, $meroId) {
-    $stmt = $pdo->prepare("
-        SELECT 
-            u.oid as id,
-            u.userid,
-            u.fio,
-            u.sex,
-            u.birthdata,
-            u.sportzvanie,
-            u.boats,
-            lr.discipline,
-            lr.status,
-            t.teamname,
-            t.teamcity
-        FROM listreg lr
-        JOIN users u ON lr.users_oid = u.oid
-        LEFT JOIN teams t ON lr.teams_oid = t.oid
-        WHERE lr.meros_oid = ? 
-        AND lr.status IN ('Подтверждён', 'Зарегистрирован')
-        ORDER BY u.fio
-    ");
     
-    $stmt->execute([$meroId]);
-    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    // Очищаем буфер и отправляем JSON
+    ob_end_clean();
+    header('Content-Type: application/json');
+    echo json_encode(['success' => false, 'message' => 'Ошибка проведения жеребьевки: ' . $e->getMessage()]);
 }
 
-/**
- * Распределение участников по группам
- */
-function distributeParticipantsByGroups($participants, $classDistance, $meroId) {
-    $groupedParticipants = [];
-
-    foreach ($classDistance as $class => $classData) {
-        if (isset($classData['sex']) && isset($classData['dist']) && isset($classData['age_group'])) {
-            $sexes = $classData['sex'];
-            $distances = $classData['dist'];
-            $ageGroups = $classData['age_group'];
-
-            // Обрабатываем каждую комбинацию пол/дистанция
-            for ($i = 0; $i < count($sexes); $i++) {
-                $sex = $sexes[$i];
-                $distanceString = $distances[$i];
-                $ageGroupString = $ageGroups[$i];
-
-                // Разбираем дистанции (разделяем по запятой)
-                $distanceArray = array_map('trim', explode(',', $distanceString));
+// Функция для генерации данных протоколов
+function generateProtocolsData($meroId) {
+    try {
+        $db = Database::getInstance();
+        
+        // Получаем данные мероприятия
+        $stmt = $db->prepare("SELECT * FROM meros WHERE oid = ?");
+        $stmt->execute([$meroId]);
+        $event = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$event) {
+            error_log("generateProtocolsData: Мероприятие не найдено");
+            return false;
+        }
+        
+        // Парсим class_distance
+        $classDistance = json_decode($event['class_distance'], true);
+        if (!$classDistance) {
+            error_log("generateProtocolsData: Ошибка чтения конфигурации классов");
+            return false;
+        }
+        
+        $protocolsData = [];
+        
+        // Проходим по всем классам лодок
+        foreach ($classDistance as $boatClass => $config) {
+            $sexes = $config['sex'] ?? [];
+            $distances = $config['dist'] ?? [];
+            $ageGroups = $config['age_group'] ?? [];
+            
+            // Проходим по полам
+            foreach ($sexes as $sexIndex => $sex) {
+                $distance = $distances[$sexIndex] ?? '';
+                $ageGroupStr = $ageGroups[$sexIndex] ?? '';
                 
-                // Разбираем возрастные группы (разделяем по запятой)
-                $ageGroupArray = array_map('trim', explode(',', $ageGroupString));
-
-                // Создаем протокол для каждой комбинации дистанция + возрастная группа
-                foreach ($distanceArray as $distance) {
-                    foreach ($ageGroupArray as $ageGroup) {
-                        // Разбираем возрастную группу
-                        $ageGroupData = parseAgeGroup($ageGroup);
-
-                        foreach ($ageGroupData as $ageGroupInfo) {
-                            // Нормализуем пол для groupKey (используем латиницу)
-                            $normalizedSex = $sex === 'М' ? 'M' : $sex;
-                            $groupKey = "{$meroId}_{$class}_{$normalizedSex}_{$distance}_{$ageGroupInfo['name']}";
+                if (!$distance || !$ageGroupStr) {
+                    continue;
+                }
+                
+                // Разбиваем дистанции
+                $distanceList = array_map('trim', explode(',', $distance));
+                
+                // Разбиваем возрастные группы
+                $ageGroupList = array_map('trim', explode(',', $ageGroupStr));
+                
+                foreach ($distanceList as $dist) {
+                    foreach ($ageGroupList as $ageGroup) {
+                        // Извлекаем название группы
+                        if (preg_match('/^(.+?):\s*(\d+)-(\d+)$/', $ageGroup, $matches)) {
+                            $groupName = trim($matches[1]);
+                            $minAge = (int)$matches[2];
+                            $maxAge = (int)$matches[3];
                             
-                            // Фильтруем участников по полу, возрасту и дисциплине
-                            $groupParticipants = filterParticipantsForGroup($participants, $class, $sex, $ageGroupInfo);
+                            $redisKey = "{$meroId}_{$boatClass}_{$sex}_{$dist}_{$groupName}";
                             
-                            if (!empty($groupParticipants)) {
-                                // Проводим жеребьевку (случайное распределение номеров воды)
-                                $groupParticipants = conductDrawForGroup($groupParticipants, $class);
-                                
-                                $groupedParticipants[$groupKey] = [
-                                    'participants' => $groupParticipants,
-                                    'drawConducted' => true,
-                                    'lastUpdated' => date('Y-m-d H:i:s'),
-                                    'totalParticipants' => count($groupParticipants)
-                                ];
-                            }
-                            // Не создаем группы без участников - они будут пустыми в интерфейсе
+                            // Получаем участников для этой группы
+                            $participants = getParticipantsForGroup($db, $meroId, $boatClass, $sex, $dist, $minAge, $maxAge);
+                            
+                            $protocolsData[] = [
+                                'meroId' => (int)$meroId,
+                                'discipline' => $boatClass,
+                                'sex' => $sex,
+                                'distance' => $dist,
+                                'ageGroups' => [
+                                    [
+                                        'name' => $groupName,
+                                        'protocol_number' => count($protocolsData) + 1,
+                                        'participants' => $participants,
+                                        'redisKey' => $redisKey,
+                                        'protected' => false
+                                    ]
+                                ],
+                                'created_at' => date('Y-m-d H:i:s')
+                            ];
                         }
                     }
                 }
             }
         }
+        
+        return $protocolsData;
+        
+    } catch (Exception $e) {
+        error_log("generateProtocolsData: Ошибка: " . $e->getMessage());
+        return false;
     }
-
-    return $groupedParticipants;
 }
 
-/**
- * Фильтрация участников для конкретной группы
- */
-function filterParticipantsForGroup($participants, $class, $sex, $ageGroupInfo) {
-    $filtered = [];
+// Функция для получения участников группы
+function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $minAge, $maxAge) {
+    $currentYear = date('Y');
+    $yearEnd = $currentYear . '-12-31';
+    
+    $sql = "
+        SELECT 
+            u.oid, u.userid, u.fio, u.sex, u.birthdata, u.sportzvanie, u.city,
+            t.teamname, t.teamcity
+        FROM users u
+        LEFT JOIN listreg lr ON u.oid = lr.users_oid
+        LEFT JOIN teams t ON lr.teams_oid = t.oid
+        WHERE lr.meros_oid = ?
+        AND u.sex = ?
+        AND u.accessrights = 'Sportsman'
+        AND lr.status IN ('Зарегистрирован', 'Подтверждён')
+    ";
+    
+    $stmt = $db->prepare($sql);
+    $stmt->execute([$meroId, $sex]);
+    $participants = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    $filteredParticipants = [];
     
     foreach ($participants as $participant) {
-        // Проверяем пол
-        if ($participant['sex'] !== $sex && !($participant['sex'] === 'М' && $sex === 'M') && !($participant['sex'] === 'M' && $sex === 'М')) {
-            continue;
-        }
-        
         // Проверяем возраст
-        $birthYear = (int)substr($participant['birthdata'], 0, 4);
-        $currentYear = (int)date('Y');
-        $age = $currentYear - $birthYear;
+        $birthDate = new DateTime($participant['birthdata']);
+        $yearEndDate = new DateTime($yearEnd);
+        $age = $yearEndDate->diff($birthDate)->y;
         
-        if ($age < $ageGroupInfo['minAge'] || $age > $ageGroupInfo['maxAge']) {
-            continue;
-        }
-        
-        // Проверяем, что участник зарегистрирован на эту дисциплину
-        $discipline = json_decode($participant['discipline'], true);
-        if ($discipline && isset($discipline[$class])) {
-            $filtered[] = [
-                'id' => $participant['id'],
-                'userid' => $participant['userid'],
-                'fio' => $participant['fio'],
-                'birthdata' => $participant['birthdata'],
-                'birthYear' => $birthYear,
-                'age' => $age,
-                'ageGroup' => $ageGroupInfo['displayName'],
-                'sportzvanie' => $participant['sportzvanie'],
-                'sportRank' => $participant['sportzvanie'],
-                'team' => $participant['teamname'] ?? 'Б/к',
-                'teamCity' => $participant['teamcity'] ?? '',
-                'teamName' => $participant['teamname'] ?? '',
-                'athleteNumber' => $participant['userid']
-            ];
-        }
-    }
-    
-    return $filtered;
-}
-
-/**
- * Проведение жеребьевки для группы участников
- */
-function conductDrawForGroup($participants, $boatClass = '') {
-    // Перемешиваем участников случайным образом
-    shuffle($participants);
-    
-    // Определяем максимальное количество дорожек в зависимости от типа лодки
-    $maxLanes = getMaxLanesForBoat($boatClass);
-    
-    // Назначаем номера воды с учетом ограничений
-    foreach ($participants as $index => $participant) {
-        $waterNumber = ($index % $maxLanes) + 1;
-        $participants[$index]['waterNumber'] = $waterNumber;
-        $participants[$index]['water'] = $waterNumber; // Добавляем поле water для совместимости с JavaScript
-    }
-    
-    return $participants;
-}
-
-/**
- * Получение максимального количества дорожек для типа лодки
- * @param string $boatClass Класс лодки (D-10, K-1, C-2, etc.)
- * @return int Максимальное количество дорожек
- */
-function getMaxLanesForBoat($boatClass) {
-    // Драконы: 6 дорожек
-    if ($boatClass === 'D-10') {
-        return 6;
-    }
-    
-    // Остальные лодки: 9 дорожек
-    return 9;
-}
-
-/**
- * Сохранение данных протоколов в Redis и JSON
- */
-function saveProtocolsData($meroId, $groupedParticipants) {
-    // Создаем директорию для JSON файлов
-    $jsonDir = __DIR__ . "/../../files/json/protocols/{$meroId}";
-    if (!is_dir($jsonDir)) {
-        mkdir($jsonDir, 0755, true);
-    }
-
-    // Сохраняем в Redis и JSON
-    foreach ($groupedParticipants as $groupKey => $data) {
-        // Сохраняем стартовые протоколы
-        saveProtocolData($meroId, $groupKey, 'start', $data);
-        
-        // Создаем финишные протоколы с синхронизированными данными
-        $finishData = createFinishProtocolData($data);
-        saveProtocolData($meroId, $groupKey, 'finish', $finishData);
-        
-        error_log("✅ [PROTOCOLS] Созданы протоколы для группы {$groupKey}: стартовый и финишный");
-    }
-}
-
-/**
- * Создание финишных данных протокола на основе стартовых
- * @param array $startData Данные стартового протокола
- * @return array Данные финишного протокола
- */
-function createFinishProtocolData($startData) {
-    $finishData = $startData;
-    
-    // Добавляем поля для результатов в финишный протокол
-    foreach ($finishData['participants'] as &$participant) {
-        // Сохраняем все данные из стартового протокола
-        // Добавляем поля для результатов
-        $participant['place'] = '';
-        $participant['finishTime'] = '';
-        $participant['notes'] = '';
-        
-        // Убеждаемся, что все ключевые поля синхронизированы
-        $requiredFields = ['userid', 'fio', 'birthdata', 'ageGroup', 'sportRank', 'waterNumber', 'water', 'team'];
-        foreach ($requiredFields as $field) {
-            if (!isset($participant[$field])) {
-                $participant[$field] = '';
+        if ($age >= $minAge && $age <= $maxAge) {
+            // Проверяем, что участник зарегистрирован на эту дисциплину
+            $disciplineSql = "
+                SELECT discipline 
+                FROM listreg 
+                WHERE users_oid = ? AND meros_oid = ?
+            ";
+            $disciplineStmt = $db->prepare($disciplineSql);
+            $disciplineStmt->execute([$participant['oid'], $meroId]);
+            $disciplineData = $disciplineStmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($disciplineData) {
+                $discipline = json_decode($disciplineData['discipline'], true);
+                if ($discipline && isset($discipline[$boatClass])) {
+                    $filteredParticipants[] = [
+                        'userId' => $participant['userid'],
+                        'fio' => $participant['fio'],
+                        'sex' => $participant['sex'],
+                        'birthdata' => $participant['birthdata'],
+                        'sportzvanie' => $participant['sportzvanie'],
+                        'teamName' => $participant['teamname'] ?? '',
+                        'teamCity' => $participant['teamcity'] ?? '',
+                        'lane' => null,
+                        'place' => null,
+                        'finishTime' => null,
+                        'addedManually' => false,
+                        'addedAt' => date('Y-m-d H:i:s')
+                    ];
+                }
             }
         }
-        
-        // Убеждаемся, что поле water синхронизировано с waterNumber
-        if (isset($participant['waterNumber']) && !isset($participant['water'])) {
-            $participant['water'] = $participant['waterNumber'];
-        }
     }
     
-    return $finishData;
-}
-
-/**
- * Сохранение данных протокола
- */
-function saveProtocolData($meroId, $groupKey, $type, $data) {
-    // Сохраняем в Redis
-    $redis = new Redis();
-    try {
-        $redis->connect('redis', 6379);
-        
-        // Извлекаем oid из groupKey (первая часть до первого подчеркивания)
-        $parts = explode('_', $groupKey, 2);
-        $eventOid = $parts[0];
-        $restOfKey = $parts[1] ?? '';
-        
-        $redisKey = "protocols:{$type}:{$eventOid}:{$restOfKey}";
-        $redis->setex($redisKey, 86400, json_encode($data)); // TTL 24 часа
-    } catch (Exception $e) {
-        error_log("Ошибка сохранения в Redis: " . $e->getMessage());
-    }
-
-    // Сохраняем в JSON файл
-    $jsonFilePath = __DIR__ . "/../../files/json/protocols/{$meroId}/{$groupKey}_{$type}.json";
-    file_put_contents($jsonFilePath, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-}
-
-/**
- * Разбор строки возрастной группы
- */
-function parseAgeGroup($ageGroupString) {
-    $result = [];
-    
-    // Разбираем строку типа "группа 1: 27-49"
-    if (preg_match('/^(.+?):\s*(\d+)-(\d+)$/', $ageGroupString, $matches)) {
-        $groupName = trim($matches[1]);
-        $minAge = (int)$matches[2];
-        $maxAge = (int)$matches[3];
-        
-        $result[] = [
-            'name' => $groupName,
-            'displayName' => $ageGroupString,
-            'minAge' => $minAge,
-            'maxAge' => $maxAge
-        ];
-    } else {
-        // Если не удалось разобрать, используем как есть
-        $result[] = [
-            'name' => $ageGroupString,
-            'displayName' => $ageGroupString,
-            'minAge' => 0,
-            'maxAge' => 999
-        ];
-    }
-    
-    return $result;
-}
-
-/**
- * Очистка предыдущих данных протоколов для мероприятия
- */
-function clearPreviousProtocolData($meroId) {
-    // Очищаем данные в Redis
-    try {
-        $redis = new Redis();
-        $redis->connect('redis', 6379);
-        
-        // Удаляем все ключи протоколов для данного мероприятия
-        $keys = $redis->keys("protocols:*:{$meroId}:*");
-        foreach ($keys as $key) {
-            $redis->del($key);
-        }
-        
-        // Удаляем ключи с данными протоколов
-        $dataKeys = $redis->keys("protocol:data:{$meroId}:*");
-        foreach ($dataKeys as $key) {
-            $redis->del($key);
-        }
-        
-        // Удаляем результаты жеребьевки
-        $redis->del("draw_results:{$meroId}");
-        
-        error_log("🧹 [PROTOCOLS] Очищены предыдущие данные для мероприятия {$meroId}");
-    } catch (Exception $e) {
-        error_log("Ошибка очистки Redis: " . $e->getMessage());
-    }
-    
-    // Очищаем JSON файлы
-    $jsonDir = __DIR__ . "/../../files/json/protocols/{$meroId}";
-    if (is_dir($jsonDir)) {
-        $files = glob($jsonDir . "/*.json");
-        foreach ($files as $file) {
-            unlink($file);
-        }
-        error_log("🧹 [PROTOCOLS] Очищены JSON файлы для мероприятия {$meroId}");
-    }
+    return $filteredParticipants;
 }
 ?> 

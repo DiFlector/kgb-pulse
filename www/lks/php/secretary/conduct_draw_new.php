@@ -237,7 +237,7 @@ function getParticipantsForDiscipline($db, $meroOid, $class, $sex, $distance, $a
                             'age' => $age,
                             'city' => $participant['city'],
                             'sportzvanie' => $participant['sportzvanie'] ?? 'БР',
-                            'ageGroup' => $ageGroup['displayName'] ?? $ageGroup['name']
+                            'ageGroup' => isset($ageGroup['full_name']) ? $ageGroup['full_name'] : ($ageGroup['displayName'] ?? $ageGroup['name'])
                         ];
                     }
                 } else {
@@ -249,7 +249,7 @@ function getParticipantsForDiscipline($db, $meroOid, $class, $sex, $distance, $a
                         'age' => $age,
                         'city' => $participant['city'],
                         'sportzvanie' => $participant['sportzvanie'] ?? 'БР',
-                        'ageGroup' => $ageGroup['displayName'] ?? $ageGroup['name']
+                        'ageGroup' => isset($ageGroup['full_name']) ? $ageGroup['full_name'] : ($ageGroup['displayName'] ?? $ageGroup['name'])
                     ];
                 }
             }
@@ -390,7 +390,9 @@ function distributeParticipantsByDisciplines($participants, $classDistance) {
                     });
                     
                     foreach ($ageGroupsList as $ageGroup) {
-                        $groupKey = "{$class}_{$sex}_{$distance}_{$ageGroup['name']}";
+                        // Используем полное название возрастной группы с названием и возрастным диапазоном
+                        $ageGroupName = isset($ageGroup['full_name']) ? $ageGroup['full_name'] : $ageGroup['name'];
+                        $groupKey = "{$class}_{$sex}_{$distance}_{$ageGroupName}";
                         $distributed[$groupKey] = [];
                         
                         // Фильтруем участников для данной группы

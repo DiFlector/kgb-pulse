@@ -1,138 +1,154 @@
 <?php
-require_once '../../php/common/Auth.php';
+session_start();
 
-$auth = new Auth();
-if (!$auth->isAuthenticated() || !in_array($auth->getUserRole(), ['Admin', 'SuperUser'])) {
-    header('Location: ../../login.php');
+// Проверяем авторизацию
+if (!isset($_SESSION['user_id']) || ($_SESSION['user_role'] !== 'Admin' && $_SESSION['user_role'] !== 'SuperUser')) {
+    header('Location: /lks/login.php');
     exit;
 }
 
-$userRole = $auth->getUserRole();
-$currentUser = $auth->getCurrentUser();
-$userName = $currentUser['fio'] ?? 'Пользователь';
+require_once __DIR__ . '/../../php/db/Database.php';
+
+$db = Database::getInstance();
+$user = [
+    'userid' => $_SESSION['user_id'],
+    'fio' => $_SESSION['user_name'] ?? 'Пользователь',
+    'role' => $_SESSION['user_role']
+];
+
+// Настройки страницы
+$pageTitle = 'Очередь спортсменов - Панель администратора';
+$pageHeader = 'Очередь спортсменов';
+$showBreadcrumb = false;
+$breadcrumb = [];
+
+include __DIR__ . '/../includes/header.php';
 ?>
 
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Очередь спортсменов - Панель администратора</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="../../css/style.css" rel="stylesheet">
-    <style>
-        .team-card {
-            border-left: 4px solid #dc3545;
-            background: #fff8f8;
-        }
-        .queue-card {
-            border-left: 4px solid #ffc107;
-            background: #fffbf0;
-        }
-        .participant-row {
-            border-bottom: 1px solid #eee;
-            padding: 10px 0;
-        }
-        .participant-row:last-child {
-            border-bottom: none;
-        }
-        .role-badge {
-            font-size: 0.75rem;
-        }
-        .loading-spinner {
-            display: none;
-        }
-    </style>
-</head>
-<body>
-    <?php include '../includes/header.php'; ?>
+<style>
+    .team-card {
+        border-left: 4px solid #dc3545;
+        background: #fff8f8;
+    }
+    .queue-card {
+        border-left: 4px solid #ffc107;
+        background: #fffbf0;
+    }
+    .participant-row {
+        border-bottom: 1px solid #eee;
+        padding: 10px 0;
+    }
+    .participant-row:last-child {
+        border-bottom: none;
+    }
+    .role-badge {
+        font-size: 0.75rem;
+    }
+    .loading-spinner {
+        display: none;
+    }
+</style>
 
-    <!-- Основной контент -->
-    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-        <h1 class="h2">
-            <i class="fas fa-clock me-2"></i>Очередь спортсменов
-        </h1>
-        <div class="btn-toolbar mb-2 mb-md-0">
-            <button type="button" class="btn btn-primary" onclick="refreshData()">
-                <i class="fas fa-sync-alt"></i> Обновить
-            </button>
-        </div>
+<!-- Основной контент -->
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="fas fa-clock me-2"></i>Очередь спортсменов
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <button type="button" class="btn btn-primary" onclick="refreshData()">
+            <i class="fas fa-sync-alt"></i> Обновить
+        </button>
     </div>
+</div>
 
-    <!-- Индикатор загрузки -->
-    <div class="loading-spinner text-center py-4">
-        <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Загрузка...</span>
-        </div>
-        <p class="mt-2">Загрузка данных...</p>
+<!-- Индикатор загрузки -->
+<div class="loading-spinner text-center py-4">
+    <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Загрузка...</span>
     </div>
+    <p class="mt-2">Загрузка данных...</p>
+</div>
 
-    <!-- Статистика -->
-    <div class="row mb-4" id="statistics" style="display: none;">
-        <div class="col-md-6">
-            <div class="card text-center">
-                <div class="card-body">
-                    <h5 class="card-title text-warning">В очереди</h5>
-                    <h2 class="text-warning" id="queue-count">0</h2>
-                    <p class="card-text">спортсменов ожидают</p>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="card text-center">
-                <div class="card-body">
-                    <h5 class="card-title text-danger">Неполные команды</h5>
-                    <h2 class="text-danger" id="incomplete-count">0</h2>
-                    <p class="card-text">команд требуют доукомплектования</p>
-                </div>
+<!-- Статистика -->
+<div class="row mb-4" id="statistics" style="display: none;">
+    <div class="col-md-6">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-warning">В очереди</h5>
+                <h2 class="text-warning" id="queue-count">0</h2>
+                <p class="card-text">спортсменов ожидают</p>
             </div>
         </div>
     </div>
-
-    <!-- Спортсмены в очереди -->
-    <div class="card queue-card mb-4" id="queue-section" style="display: none;">
-        <div class="card-header">
-            <h5 class="mb-0">
-                <i class="fas fa-hourglass-half me-2"></i>Спортсмены в очереди
-            </h5>
-        </div>
-        <div class="card-body" id="queue-participants">
-            <!-- Данные загружаются через JavaScript -->
+    <div class="col-md-6">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-danger">Неполные команды</h5>
+                <h2 class="text-danger" id="incomplete-count">0</h2>
+                <p class="card-text">команд требуют доукомплектования</p>
+            </div>
         </div>
     </div>
+</div>
 
-    <!-- Неполные команды -->
-    <div class="card team-card" id="teams-section" style="display: none;">
-        <div class="card-header">
-            <h5 class="mb-0">
-                <i class="fas fa-users me-2"></i>Неполные команды
-            </h5>
-        </div>
-        <div class="card-body" id="incomplete-teams">
-            <!-- Данные загружаются через JavaScript -->
-        </div>
+<!-- Спортсмены в очереди -->
+<div class="card queue-card mb-4" id="queue-section" style="display: none;">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="fas fa-hourglass-half me-2"></i>Спортсмены в очереди
+        </h5>
     </div>
-
-    <!-- Сообщение об отсутствии данных -->
-    <div class="alert alert-info text-center" id="no-data" style="display: none;">
-        <i class="fas fa-info-circle me-2"></i>
-        Очередь пуста! Все спортсмены распределены.
+    <div class="card-body" id="queue-participants">
+        <!-- Данные загружаются через JavaScript -->
     </div>
+</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="../../js/libs/jquery/jquery-3.7.1.min.js"></script>
-    <script>
-        $(document).ready(function() {
-            loadQueueData();
-        });
+<!-- Неполные команды -->
+<div class="card team-card" id="teams-section" style="display: none;">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="fas fa-users me-2"></i>Неполные команды
+        </h5>
+    </div>
+    <div class="card-body" id="incomplete-teams">
+        <!-- Данные загружаются через JavaScript -->
+    </div>
+</div>
+
+<!-- Сообщение об отсутствии данных -->
+<div class="alert alert-info text-center" id="no-data" style="display: none;">
+    <i class="fas fa-info-circle me-2"></i>
+    Очередь пуста! Все спортсмены распределены.
+</div>
+
+<!-- Контейнер для данных -->
+<div id="dataContainer" style="display: none;">
+    <!-- Данные будут загружены через JavaScript -->
+</div>
+    
+<!-- Специфичный JavaScript для страницы очереди -->
+<script>
+    // Ждем полной загрузки DOM и инициализации sidebar-manager
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('Queue.php: DOM загружен');
+        
+        // Проверяем наличие sidebar-manager
+        if (typeof SidebarManager !== 'undefined') {
+            console.log('Queue.php: SidebarManager найден');
+        } else {
+            console.error('Queue.php: SidebarManager НЕ найден!');
+        }
+        
+        // Загружаем данные после инициализации
+        loadQueueData();
+    });
 
         function loadQueueData() {
             $('.loading-spinner').show();
-            $('#statistics, #queue-section, #teams-section, #no-data').hide();
+            $('#statistics, #queue-section, #teams-section, #no-data, #dataContainer').hide();
 
             $.ajax({
-                url: '../../php/common/get_queue.php',
+                url: '/lks/php/common/get_queue.php',
                 method: 'GET',
                 dataType: 'json',
                 success: function(response) {
@@ -142,7 +158,8 @@ $userName = $currentUser['fio'] ?? 'Пользователь';
                         showError('Ошибка загрузки данных: ' + response.error);
                     }
                 },
-                error: function() {
+                error: function(xhr, status, error) {
+                    console.error('Ошибка AJAX:', xhr, status, error);
                     showError('Ошибка соединения с сервером');
                 },
                 complete: function() {
@@ -310,7 +327,7 @@ $userName = $currentUser['fio'] ?? 'Пользователь';
             }
 
             $.ajax({
-                url: '../../php/admin/update_registration_status.php',
+                url: '/lks/php/admin/update_registration_status.php',
                 method: 'POST',
                 data: {
                     registration_id: registrationId,
@@ -325,7 +342,8 @@ $userName = $currentUser['fio'] ?? 'Пользователь';
                         showError('Ошибка изменения статуса: ' + response.error);
                     }
                 },
-                error: function() {
+                error: function(xhr, status, error) {
+                    console.error('Ошибка AJAX:', xhr, status, error);
                     showError('Ошибка соединения с сервером');
                 }
             });
@@ -336,14 +354,33 @@ $userName = $currentUser['fio'] ?? 'Пользователь';
         }
 
         function showSuccess(message) {
-            // Простое уведомление (можно заменить на более красивое)
-            alert('Успех: ' + message);
+            showNotification(message, 'success');
         }
 
         function showError(message) {
-            // Простое уведомление (можно заменить на более красивое)
-            alert('Ошибка: ' + message);
+            showNotification(message, 'error');
+        }
+
+        function showNotification(message, type = 'info') {
+            // Создаем уведомление
+            const notification = document.createElement('div');
+            notification.className = `alert alert-${type === 'error' ? 'danger' : type === 'success' ? 'success' : 'info'} alert-dismissible fade show position-fixed`;
+            notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+            notification.innerHTML = `
+                <strong>${type === 'error' ? 'Ошибка!' : type === 'success' ? 'Успех!' : 'Информация'}</strong>
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Автоматически удаляем через 5 секунд
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 5000);
         }
     </script>
-</body>
-</html> 
+
+<?php include __DIR__ . '/../includes/footer.php'; ?> 

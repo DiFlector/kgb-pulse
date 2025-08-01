@@ -1,20 +1,32 @@
 <?php
 session_start();
-require_once $_SERVER['DOCUMENT_ROOT'] . '/lks/php/common/Auth.php';
-require_once $_SERVER['DOCUMENT_ROOT'] . '/lks/php/db/Database.php';
+require_once __DIR__ . '/../../php/common/Auth.php';
+require_once __DIR__ . '/../../php/db/Database.php';
+
+// Отладочная информация
+error_log("protocols.php: Сессия начата");
+error_log("protocols.php: SESSION = " . json_encode($_SESSION));
 
 // Проверка авторизации и прав доступа
 $auth = new Auth();
+error_log("protocols.php: Auth создан");
+
 if (!$auth->isAuthenticated()) {
+    error_log("protocols.php: Пользователь не авторизован");
     header('Location: /lks/login.php');
     exit;
 }
 
+error_log("protocols.php: Пользователь авторизован");
+
 // Проверка прав секретаря, суперпользователя или администратора
 if (!$auth->hasAnyRole(['Secretary', 'SuperUser', 'Admin'])) {
+    error_log("protocols.php: У пользователя нет прав секретаря");
     header('Location: /lks/enter/403.html');
     exit;
 }
+
+error_log("protocols.php: У пользователя есть права секретаря");
 
 $db = Database::getInstance();
 $pdo = $db->getPDO();
@@ -43,6 +55,8 @@ $meroId = $event['oid']; // Используем oid для API запросов
 // Отладочная информация
 error_log("protocols.php: selected_disciplines = " . json_encode($_SESSION['selected_disciplines'] ?? []));
 error_log("protocols.php: selected_event = " . json_encode($_SESSION['selected_event'] ?? []));
+error_log("protocols.php: meroId = " . $meroId);
+error_log("protocols.php: eventId = " . $eventId);
 
 // Получение списка зарегистрированных участников
 $stmt = $pdo->prepare("
@@ -145,10 +159,38 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
             background-color: #fff3cd;
             outline: 2px solid #ffc107;
         }
+        .protected-protocol {
+            border: 2px solid #28a745 !important;
+            border-radius: 8px;
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        .loading-content {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+        .loading-message {
+            margin-top: 15px;
+            font-size: 16px;
+            color: #666;
+        }
     </style>
 </head>
 <body>
-    <?php include $_SERVER['DOCUMENT_ROOT'] . '/lks/enter/includes/header.php'; ?>
+    <?php include __DIR__ . '/../includes/header.php'; ?>
 
     <div class="container-fluid protocols-container">
         <!-- Информация о мероприятии -->
@@ -180,9 +222,7 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
                 <div class="protocol-panel start-protocols">
                     <h3><i class="fas fa-flag-checkered"></i> Стартовые протоколы</h3>
                     <div id="start-protocols" class="protocols-content">
-                        <div class="loading-spinner">
-                            <i class="fas fa-spinner fa-spin"></i> Загрузка протоколов...
-                        </div>
+                        <!-- Данные будут загружены через JavaScript -->
                     </div>
                 </div>
             </div>
@@ -190,10 +230,22 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
                 <div class="protocol-panel finish-protocols">
                     <h3><i class="fas fa-trophy"></i> Финишные протоколы</h3>
                     <div id="finish-protocols" class="protocols-content">
-                        <div class="loading-spinner">
-                            <i class="fas fa-spinner fa-spin"></i> Загрузка протоколов...
-                        </div>
+                        <!-- Данные будут загружены через JavaScript -->
                     </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Отладочная информация -->
+        <div class="row mt-3">
+            <div class="col-12">
+                <div class="alert alert-info">
+                    <h6>Отладочная информация:</h6>
+                    <p><strong>ID мероприятия:</strong> <span id="debug-mero-id"><?php echo htmlspecialchars($eventId); ?></span></p>
+                    <p><strong>Контейнер стартовых протоколов:</strong> <span id="debug-start-container">Проверяется...</span></p>
+                    <p><strong>Контейнер финишных протоколов:</strong> <span id="debug-finish-container">Проверяется...</span></p>
+                    <p><strong>Выбранные дисциплины:</strong> <span id="debug-disciplines"><?php echo htmlspecialchars(json_encode($_SESSION['selected_disciplines'] ?? [])); ?></span></p>
+                    <p><strong>CSS тест:</strong> <span id="debug-css-test">Проверяется...</span></p>
                 </div>
             </div>
         </div>
@@ -311,13 +363,15 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
     </div>
 
     <!-- Скрытые поля для передачи данных -->
-    <input type="hidden" id="mero-id" value="<?php echo $event['champn']; ?>">
+    <input type="hidden" id="mero-id" value="<?php echo $eventId; ?>">
     <input type="hidden" id="selected-disciplines" value="<?php echo htmlspecialchars(json_encode($_SESSION['selected_disciplines'] ?? [])); ?>">
     <input type="hidden" id="current-group-key" value="">
     
     <!-- Отладочная информация -->
     <script>
+        console.log('=== ОТЛАДКА СЕССИИ ===');
         console.log('Отладка: selected-disciplines =', <?php echo json_encode($_SESSION['selected_disciplines'] ?? []); ?>);
+        console.log('Отладка: selected-event =', <?php echo json_encode($_SESSION['selected_event'] ?? []); ?>);
         console.log('Отладка: mero-id =', document.getElementById('mero-id')?.value);
         console.log('Отладка: selected-disciplines element =', document.getElementById('selected-disciplines'));
         
@@ -329,13 +383,48 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
         if (disciplinesElement) {
             const disciplines = JSON.parse(disciplinesElement.value || '[]');
             console.log('Тест получения дисциплин:', disciplines);
+            console.log('Тип дисциплин:', typeof disciplines);
+            console.log('Длина массива дисциплин:', disciplines.length);
         } else {
             console.log('Элемент selected-disciplines не найден');
         }
+        
+        console.log('=== КОНЕЦ ОТЛАДКИ СЕССИИ ===');
+        
+        // Тест загрузки protocols.js
+        console.log('=== ТЕСТ ЗАГРУЗКИ PROTOCOLS.JS ===');
+        setTimeout(() => {
+            if (typeof window.protocolsManager !== 'undefined') {
+                console.log('✅ ProtocolsManager загружен успешно');
+                document.getElementById('debug-start-container').textContent = 'ProtocolsManager загружен';
+                document.getElementById('debug-finish-container').textContent = 'ProtocolsManager загружен';
+            } else {
+                console.log('❌ ProtocolsManager НЕ загружен');
+                document.getElementById('debug-start-container').textContent = 'ProtocolsManager НЕ загружен';
+                document.getElementById('debug-finish-container').textContent = 'ProtocolsManager НЕ загружен';
+            }
+        }, 1000);
     </script>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Fallback для Bootstrap
+        if (typeof bootstrap === 'undefined') {
+            console.warn('Bootstrap не загружен из CDN, загружаем альтернативную версию...');
+            const script = document.createElement('script');
+            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.3/js/bootstrap.bundle.min.js';
+            script.onload = function() {
+                console.log('Bootstrap загружен из альтернативного источника');
+            };
+            script.onerror = function() {
+                console.error('Не удалось загрузить Bootstrap');
+            };
+            document.head.appendChild(script);
+        } else {
+            console.log('Bootstrap загружен успешно');
+        }
+    </script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="/lks/js/secretary/protocols.js"></script>
+    <script src="/lks/js/secretary/protocols_new.js"></script>
 </body>
 </html> 

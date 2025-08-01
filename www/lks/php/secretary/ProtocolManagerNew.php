@@ -106,7 +106,7 @@ class ProtocolManagerNew {
                 'sex' => $sex,
                 'distance' => $distance,
                 'ageGroup' => $ageGroup['full_name'],
-                'ageGroupName' => $ageGroup['name'],
+                'ageGroupName' => isset($ageGroup['full_name']) ? $ageGroup['full_name'] : $ageGroup['name'],
                 'participants' => [],
                 'maxLanes' => $maxLanes,
                 'created_at' => date('Y-m-d H:i:s'),

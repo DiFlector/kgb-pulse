@@ -316,6 +316,25 @@ $pageTitle = 'Выбор дисциплин для жеребьевки';
                         </button>
                     </div>
                     
+                    <!-- Статус заполненности дисциплин -->
+                    <div id="disciplinesStatus" class="mt-4" style="display: none;">
+                        <div class="card">
+                            <div class="card-header bg-info text-white">
+                                <h5 class="mb-0">
+                                    <i class="bi bi-info-circle"></i> Статус заполненности дисциплин
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="statusContent"></div>
+                                <div class="mt-3">
+                                    <button type="button" class="btn btn-primary btn-lg" id="completeEventBtn" onclick="completeEvent()" style="display: none;">
+                                        <i class="bi bi-flag-checkered"></i> Завершить мероприятие
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <?php endif; ?>
                 </div>
             </div>
@@ -346,10 +365,11 @@ $pageTitle = 'Выбор дисциплин для жеребьевки';
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Глобальные переменные
         let selectedDisciplines = [];
         const eventId = <?= $eventId ?>;
 
-        // Обновление счетчика выбранных дисциплин
+        // Глобальные функции
         function updateSelectedCount() {
             const count = selectedDisciplines.length;
             document.getElementById('countNumber').textContent = count;
@@ -491,9 +511,118 @@ $pageTitle = 'Выбор дисциплин для жеребьевки';
             form.submit();
         }
 
+
+        
+        // Глобальные функции для работы со статусом дисциплин
+        async function loadDisciplinesStatus() {
+            try {
+                const response = await fetch('/lks/php/secretary/get_disciplines_status.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        meroId: eventId,
+                        disciplines: selectedDisciplines
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    displayDisciplinesStatus(data);
+                } else {
+                    console.error('Ошибка загрузки статуса:', data.message);
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки статуса дисциплин:', error);
+            }
+        }
+        
+        // Отображение статуса дисциплин
+        function displayDisciplinesStatus(data) {
+            const statusContainer = document.getElementById('disciplinesStatus');
+            const statusContent = document.getElementById('statusContent');
+            const completeBtn = document.getElementById('completeEventBtn');
+            
+            if (!statusContainer || !statusContent) return;
+            
+            let html = '<div class="row">';
+            
+            // Статистика
+            const stats = data.statistics;
+            html += '<div class="col-md-12 mb-3">';
+            html += '<div class="row text-center">';
+            html += `<div class="col-md-3"><div class="badge bg-success fs-6">Завершено: ${stats.completed}</div></div>`;
+            html += `<div class="col-md-3"><div class="badge bg-warning fs-6">Частично: ${stats.partial}</div></div>`;
+            html += `<div class="col-md-3"><div class="badge bg-secondary fs-6">Пустые: ${stats.empty}</div></div>`;
+            html += `<div class="col-md-3"><div class="badge bg-info fs-6">Всего: ${stats.total}</div></div>`;
+            html += '</div></div>';
+            
+            // Детальный статус
+            html += '<div class="col-md-12">';
+            html += '<h6>Детальный статус:</h6>';
+            html += '<div class="row">';
+            
+            data.disciplinesStatus.forEach(discipline => {
+                let statusClass = 'secondary';
+                let statusText = 'Пустая';
+                
+                if (discipline.status === 'completed') {
+                    statusClass = 'success';
+                    statusText = 'Завершена';
+                } else if (discipline.status === 'partial') {
+                    statusClass = 'warning';
+                    statusText = 'Частично заполнена';
+                }
+                
+                html += '<div class="col-md-6 col-lg-4 mb-2">';
+                html += `<div class="card border-${statusClass}">`;
+                html += `<div class="card-body p-2">`;
+                html += `<small class="text-${statusClass}"><strong>${discipline.class} ${discipline.sex} ${discipline.distance}м</strong></small><br>`;
+                html += `<small class="text-muted">${statusText} (${discipline.filledProtocols}/${discipline.totalProtocols})</small>`;
+                html += '</div></div></div>';
+            });
+            
+            html += '</div></div>';
+            
+            statusContent.innerHTML = html;
+            statusContainer.style.display = 'block';
+            
+            // Показываем кнопку завершения если все дисциплины завершены
+            if (data.isReadyForCompletion) {
+                completeBtn.style.display = 'block';
+            } else {
+                completeBtn.style.display = 'none';
+            }
+        }
+        
+        // Завершение мероприятия
+        function completeEvent() {
+            if (confirm('Вы уверены, что хотите завершить мероприятие? Это действие нельзя отменить.')) {
+                // Переходим на страницу завершения мероприятия
+                window.location.href = 'complete-event.php';
+            }
+        }
+
         // Инициализация при загрузке страницы
         document.addEventListener('DOMContentLoaded', function() {
             updateSelectedCount();
+            
+            // Загружаем статус дисциплин если есть выбранные
+            if (selectedDisciplines.length > 0) {
+                loadDisciplinesStatus();
+            }
+            
+            // Проверяем, что все функции доступны
+            console.log('Функции загружены:', {
+                toggleDiscipline: typeof toggleDiscipline,
+                selectAllDisciplines: typeof selectAllDisciplines,
+                createProtocols: typeof createProtocols,
+                completeEvent: typeof completeEvent,
+                loadDisciplinesStatus: typeof loadDisciplinesStatus,
+                displayDisciplinesStatus: typeof displayDisciplinesStatus
+            });
         });
     </script>
 </body>

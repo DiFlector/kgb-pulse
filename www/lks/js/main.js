@@ -262,8 +262,6 @@ const KGBPulse = {
 
         // Анимация появления элементов
         KGBPulse.initAnimations();
-
-
     },
 
     // Инициализация AJAX форм
@@ -343,8 +341,6 @@ const AuthenticatedFeatures = {
         const mainContent = document.querySelector('.main-content');
         const footer = document.querySelector('footer#footer');
         
-
-        
         if (sidebar) {
             const wasCollapsed = sidebar.classList.contains('collapsed');
             
@@ -358,7 +354,6 @@ const AuthenticatedFeatures = {
                     footer.classList.remove('sidebar-collapsed');
                 }
                 localStorage.setItem('sidebarCollapsed', 'false');
-
             } else {
                 // Сворачиваем
                 sidebar.classList.add('collapsed');
@@ -369,7 +364,6 @@ const AuthenticatedFeatures = {
                     footer.classList.add('sidebar-collapsed');
                 }
                 localStorage.setItem('sidebarCollapsed', 'true');
-
             }
         } else {
             console.error('Sidebar element not found');
@@ -396,519 +390,346 @@ const AuthenticatedFeatures = {
 
     // Обновление уведомлений
     updateNotifications: function() {
-        KGBPulse.utils.ajax({
-            url: '/lks/php/common/get_notifications.php',
-            method: 'GET'
+        fetch('/lks/php/common/get_notifications.php', {
+            method: 'GET',
+            credentials: 'same-origin'
         })
+        .then(response => response.json())
         .then(data => {
             if (data.success) {
                 const badge = document.querySelector('.notifications .badge');
-                const dropdown = document.querySelector('.notifications .dropdown-menu');
+                const notificationsList = document.getElementById('notificationsList');
                 
                 if (badge) {
                     badge.textContent = data.count || '';
                     badge.style.display = data.count > 0 ? 'flex' : 'none';
                 }
                 
-                if (dropdown && data.notifications) {
-                    dropdown.innerHTML = data.notifications.map(notification => `
-                        <li>
-                            <a class="dropdown-item" href="#">
-                                <div class="d-flex align-items-start">
-                                    <i class="fas fa-${notification.icon} me-2 mt-1"></i>
+                if (notificationsList && data.notifications) {
+                    if (data.notifications.length === 0) {
+                        notificationsList.innerHTML = '<a class="dropdown-item text-center text-muted" href="#">Нет новых уведомлений</a>';
+                    } else {
+                        notificationsList.innerHTML = data.notifications.map(notification => `
+                            <a class="dropdown-item" href="#" data-notification-id="${notification.oid}">
+                                <div class="d-flex justify-content-between align-items-start">
                                     <div>
-                                        <div class="fw-bold">${notification.title}</div>
+                                        <div class="mb-1">${notification.title}</div>
                                         <small class="text-muted">${notification.message}</small>
-                                        <br><small class="text-muted">${notification.time}</small>
+                                        <br><small class="text-muted">${formatDate(notification.created_at)}</small>
                                     </div>
+                                    ${!notification.is_read ? '<span class="badge bg-primary rounded-pill">●</span>' : ''}
                                 </div>
                             </a>
-                        </li>
-                    `).join('');
+                        `).join('');
+                        
+                        // Добавляем обработчики клика по уведомлениям
+                        notificationsList.querySelectorAll('[data-notification-id]').forEach(item => {
+                            item.addEventListener('click', function(e) {
+                                e.preventDefault();
+                                const notificationId = this.getAttribute('data-notification-id');
+                                AuthenticatedFeatures.markNotificationAsRead(notificationId);
+                            });
+                        });
+                    }
                 }
             }
         })
         .catch(error => {
             console.error('Ошибка загрузки уведомлений:', error);
         });
+    },
+
+    // Отметка уведомления как прочитанного
+    markNotificationAsRead: function(notificationId) {
+        fetch('/lks/php/common/mark_notification_read.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            credentials: 'same-origin',
+            body: `notification_id=${notificationId}`
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Обновляем уведомления после отметки как прочитанного
+                this.updateNotifications();
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка отметки уведомления:', error);
+        });
     }
 };
 
-// Функционал уведомлений (только для авторизованных страниц)
-class NotificationManager {
-    constructor() {
-        // Используем правильные селекторы из header.php
-        this.notificationBadge = document.getElementById('notificationBadge');
-        this.notificationsList = document.getElementById('notificationsList');
-        
-        if (this.notificationBadge || this.notificationsList) {
-            this.init();
-        }
-    }
-
-    init() {
-        this.loadNotifications();
-        // Обновляем уведомления каждую минуту
-        setInterval(() => this.loadNotifications(), 60000);
-    }
-
-    async loadNotifications() {
-        try {
-            const response = await fetch('/lks/php/common/get_notifications.php');
-            const data = await response.json();
-            
-            if (data.success) {
-                this.updateNotificationUI(data.notifications || []);
-            }
-        } catch (error) {
-            console.error('Error loading notifications:', error);
-        }
-    }
-
-    async markAsRead(notificationId) {
-        try {
-            const formData = new FormData();
-            formData.append('notification_id', notificationId);
-            
-            const response = await fetch('/lks/php/common/mark_notification_read.php', {
-                method: 'POST',
-                body: formData
-            });
-            
-            const data = await response.json();
-            if (data.success) {
-                this.loadNotifications(); // Перезагружаем список
-            }
-        } catch (error) {
-            console.error('Error marking notification as read:', error);
-        }
-    }
-
-    updateNotificationUI(notifications) {
-        // Обновляем счетчик
-        if (this.notificationBadge) {
-            if (notifications.length === 0) {
-                this.notificationBadge.style.display = 'none';
-            } else {
-                this.notificationBadge.style.display = 'block';
-                this.notificationBadge.textContent = notifications.length;
-            }
-        }
-        
-        // Обновляем список
-        if (this.notificationsList) {
-            if (notifications.length === 0) {
-                this.notificationsList.innerHTML = '<li><a class="dropdown-item text-center text-muted" href="#">Нет новых уведомлений</a></li>';
-            } else {
-                let html = '';
-                notifications.forEach(notification => {
-                    html += `
-                        <li>
-                            <a class="dropdown-item notification-item" href="#" onclick="window.markNotificationAsRead(${notification.oid})">
-                                <div class="notification-title">${notification.title}</div>
-                                <div class="notification-message">${notification.message}</div>
-                                <small class="notification-time text-muted">${this.formatDate(notification.created_at)}</small>
-                            </a>
-                        </li>
-                    `;
-                });
-                this.notificationsList.innerHTML = html;
-            }
-        }
-    }
-
-    formatDate(dateString) {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('ru-RU', {
-            day: '2-digit',
-            month: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    }
+// Функция форматирования даты
+function formatDate(dateString) {
+    if (!dateString) return '';
+    
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
+    
+    const now = new Date();
+    const diff = now - date;
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+    
+    if (minutes < 1) return 'Только что';
+    if (minutes < 60) return `${minutes} мин назад`;
+    if (hours < 24) return `${hours} ч назад`;
+    if (days < 7) return `${days} дн назад`;
+    
+    return date.toLocaleDateString('ru-RU', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+    });
 }
 
-// Глобальная функция для отметки уведомлений как прочитанных
-window.markNotificationAsRead = async function(notificationId) {
-    try {
-        const formData = new FormData();
-        formData.append('notification_id', notificationId);
-        
-        const response = await fetch('/lks/php/common/mark_notification_read.php', {
-            method: 'POST',
-            body: formData
-        });
-        
-        const data = await response.json();
-        
-        if (data.success && window.notificationManager) {
-            window.notificationManager.loadNotifications();
-        }
-    } catch (error) {
-        console.error('Ошибка отметки уведомления как прочитанного:', error);
+// Инициализация Bootstrap dropdown
+function initBootstrapDropdowns() {
+    console.log('Инициализация Bootstrap dropdown...');
+    
+    // Проверяем наличие Bootstrap
+    if (typeof bootstrap === 'undefined') {
+        console.error('Bootstrap не загружен!');
+        // Повторяем попытку через 100мс
+        setTimeout(initBootstrapDropdowns, 100);
+        return;
     }
-};
+    
+    console.log('Bootstrap доступен:', bootstrap);
+    console.log('Bootstrap.Dropdown доступен:', typeof bootstrap.Dropdown);
+    
+    // Инициализация dropdown для уведомлений
+    const notificationsDropdown = document.getElementById('notificationsDropdown');
+    if (notificationsDropdown) {
+        console.log('Найдена кнопка уведомлений:', notificationsDropdown);
+        
+        try {
+            // Проверяем существующий экземпляр
+            const existingDropdown = bootstrap.Dropdown.getInstance(notificationsDropdown);
+            if (existingDropdown) {
+                console.log('Удаляем существующий экземпляр dropdown уведомлений');
+                existingDropdown.dispose();
+            }
+            
+            // Создаем новый экземпляр
+            const dropdown = new bootstrap.Dropdown(notificationsDropdown, {
+                autoClose: true,
+                boundary: 'viewport'
+            });
+            console.log('Dropdown уведомлений инициализирован:', dropdown);
+            
+            // Добавляем обработчик событий
+            notificationsDropdown.addEventListener('show.bs.dropdown', function() {
+                console.log('Dropdown уведомлений открывается');
+            });
+            
+            notificationsDropdown.addEventListener('shown.bs.dropdown', function() {
+                console.log('Dropdown уведомлений открыт');
+            });
+            
+            notificationsDropdown.addEventListener('hide.bs.dropdown', function() {
+                console.log('Dropdown уведомлений закрывается');
+            });
+            
+            notificationsDropdown.addEventListener('hidden.bs.dropdown', function() {
+                console.log('Dropdown уведомлений закрыт');
+            });
+            
+            // Добавляем обработчик клика для логирования
+            notificationsDropdown.addEventListener('click', function(e) {
+                console.log('Клик по кнопке уведомлений!');
+                console.log('Экземпляр dropdown:', bootstrap.Dropdown.getInstance(this));
+                
+                // Проверяем состояние dropdown после клика
+                setTimeout(() => {
+                    const dropdownElement = this.closest('.dropdown');
+                    const menu = this.nextElementSibling;
+                    console.log('Состояние dropdown уведомлений после клика:');
+                    console.log('- Dropdown show:', dropdownElement.classList.contains('show'));
+                    console.log('- Menu show:', menu.classList.contains('show'));
+                    console.log('- aria-expanded:', this.getAttribute('aria-expanded'));
+                }, 100);
+            });
+            
+        } catch (error) {
+            console.error('Ошибка инициализации dropdown уведомлений:', error);
+        }
+    } else {
+        console.warn('Кнопка уведомлений не найдена');
+    }
+    
+    // Инициализация dropdown для пользователя
+    const userMenuDropdown = document.getElementById('userMenuDropdown');
+    if (userMenuDropdown) {
+        console.log('Найдена кнопка пользователя:', userMenuDropdown);
+        
+        try {
+            // Проверяем существующий экземпляр
+            const existingDropdown = bootstrap.Dropdown.getInstance(userMenuDropdown);
+            if (existingDropdown) {
+                console.log('Удаляем существующий экземпляр dropdown пользователя');
+                existingDropdown.dispose();
+            }
+            
+            // Создаем новый экземпляр
+            const dropdown = new bootstrap.Dropdown(userMenuDropdown, {
+                autoClose: true,
+                boundary: 'viewport'
+            });
+            console.log('Dropdown пользователя инициализирован:', dropdown);
+            
+            // Добавляем обработчик событий
+            userMenuDropdown.addEventListener('show.bs.dropdown', function() {
+                console.log('Dropdown пользователя открывается');
+            });
+            
+            userMenuDropdown.addEventListener('shown.bs.dropdown', function() {
+                console.log('Dropdown пользователя открыт');
+            });
+            
+            userMenuDropdown.addEventListener('hide.bs.dropdown', function() {
+                console.log('Dropdown пользователя закрывается');
+            });
+            
+            userMenuDropdown.addEventListener('hidden.bs.dropdown', function() {
+                console.log('Dropdown пользователя закрыт');
+            });
+            
+            // Добавляем обработчик клика для логирования
+            userMenuDropdown.addEventListener('click', function(e) {
+                console.log('Клик по кнопке пользователя!');
+                console.log('Экземпляр dropdown:', bootstrap.Dropdown.getInstance(this));
+                
+                // Проверяем состояние dropdown после клика
+                setTimeout(() => {
+                    const dropdownElement = this.closest('.dropdown');
+                    const menu = this.nextElementSibling;
+                    console.log('Состояние dropdown пользователя после клика:');
+                    console.log('- Dropdown show:', dropdownElement.classList.contains('show'));
+                    console.log('- Menu show:', menu.classList.contains('show'));
+                    console.log('- aria-expanded:', this.getAttribute('aria-expanded'));
+                }, 100);
+            });
+            
+        } catch (error) {
+            console.error('Ошибка инициализации dropdown пользователя:', error);
+        }
+    } else {
+        console.warn('Кнопка пользователя не найдена');
+    }
+    
+    // Добавляем обработчик для закрытия dropdown при клике вне их
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.dropdown')) {
+            const dropdowns = document.querySelectorAll('.dropdown.show');
+            dropdowns.forEach(dropdown => {
+                const bsDropdown = bootstrap.Dropdown.getInstance(dropdown.querySelector('[data-bs-toggle="dropdown"]'));
+                if (bsDropdown) {
+                    bsDropdown.hide();
+                }
+            });
+        }
+    });
+    
+    // Добавляем обработчик для закрытия dropdown при нажатии Escape
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            const dropdowns = document.querySelectorAll('.dropdown.show');
+            dropdowns.forEach(dropdown => {
+                const bsDropdown = bootstrap.Dropdown.getInstance(dropdown.querySelector('[data-bs-toggle="dropdown"]'));
+                if (bsDropdown) {
+                    bsDropdown.hide();
+                }
+            });
+        }
+    });
+}
+
+// Инициализация компонентов
+function initComponents() {
+    console.log('Инициализация компонентов...');
+    
+    // Проверяем загрузку Bootstrap перед инициализацией dropdown
+    if (typeof bootstrap === 'undefined') {
+        console.log('Bootstrap еще не загружен, ждем...');
+        setTimeout(initComponents, 100);
+        return;
+    }
+    
+    console.log('Bootstrap загружен, инициализируем компоненты...');
+    
+    // Инициализация dropdown
+    initBootstrapDropdowns();
+    
+    // Инициализация уведомлений
+    if (typeof AuthenticatedFeatures !== 'undefined') {
+        AuthenticatedFeatures.updateNotifications();
+        // Обновляем уведомления каждые 30 секунд
+        setInterval(() => AuthenticatedFeatures.updateNotifications(), 30000);
+    }
+    
+    // Инициализация sidebar
+    if (typeof SidebarManager !== 'undefined') {
+        const sidebarManager = new SidebarManager();
+        sidebarManager.init();
+    }
+    
+    // Инициализация модальных окон
+    const modalTriggers = document.querySelectorAll('[data-bs-toggle="modal"]');
+    modalTriggers.forEach(trigger => {
+        trigger.addEventListener('click', function(e) {
+            e.preventDefault();
+            const targetId = this.getAttribute('data-bs-target');
+            const modal = document.querySelector(targetId);
+            if (modal) {
+                const bootstrapModal = new bootstrap.Modal(modal);
+                bootstrapModal.show();
+            }
+        });
+    });
+    
+    // Инициализация форм
+    const ajaxForms = document.querySelectorAll('form[data-ajax="true"]');
+    ajaxForms.forEach(form => {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            // Здесь можно добавить обработку AJAX форм
+        });
+    });
+}
 
 // Экспорт для глобального использования
 window.KGBPulse = KGBPulse;
 
-// Инициализация при загрузке DOM
-$(document).ready(function() {
+// Основная инициализация
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM загружен, начинаем инициализацию...');
     
-    // Инициализация компонентов
-    // initSidebar(); // ОТКЛЮЧЕНО - используем SidebarManager
-    initNotifications();
-    initBoatsManagement();
-    
-    // Загружаем статистику для админа
-    if (isAdminPage()) {
-        loadAdminStats();
-    }
-});
-
-/**
- * Инициализация системы уведомлений
- */
-function initNotifications() {
-    const $notificationBadge = $('#notificationBadge');
-    const $notificationsList = $('#notificationsList');
-    
-    // Загружаем уведомления при загрузке страницы
-    loadNotifications();
-    
-    // Обновляем уведомления каждые 30 секунд
-    setInterval(loadNotifications, 30000);
-    
-    /**
-     * Загрузка уведомлений с сервера
-     */
-    function loadNotifications() {
-        $.ajax({
-            url: '/lks/php/common/get_notifications.php',
-            method: 'GET',
-            dataType: 'json',
-            success: function(response) {
-                if (response.success) {
-                    updateNotificationUI(response.notifications);
-                }
-            },
-            error: function(xhr, status, error) {
-                console.error('Ошибка загрузки уведомлений:', error);
+    // Проверяем загрузку Bootstrap
+    if (typeof bootstrap === 'undefined') {
+        console.log('Bootstrap еще не загружен, ждем...');
+        // Проверяем каждые 100мс
+        const checkBootstrap = setInterval(() => {
+            if (typeof bootstrap !== 'undefined') {
+                console.log('Bootstrap загружен!');
+                clearInterval(checkBootstrap);
+                initComponents();
             }
-        });
-    }
-    
-    /**
-     * Обновление интерфейса уведомлений
-     */
-    function updateNotificationUI(notifications) {
-        const unreadCount = notifications.filter(n => !n.is_read).length;
+        }, 100);
         
-        // Обновляем счетчик
-        if (unreadCount > 0) {
-            $notificationBadge.text(unreadCount);
-            $notificationBadge.show();
-        } else {
-            $notificationBadge.hide();
-        }
+        // Таймаут на случай, если Bootstrap не загрузится
+        setTimeout(() => {
+            clearInterval(checkBootstrap);
+            console.error('Bootstrap не загрузился в течение 5 секунд');
+        }, 5000);
         
-        // Обновляем список уведомлений
-        $notificationsList.empty();
-        
-        if (notifications.length === 0) {
-            $notificationsList.append('<a class="dropdown-item text-center text-muted" href="#">Нет новых уведомлений</a>');
-        } else {
-            notifications.slice(0, 5).forEach(function(notification) {
-                const isRead = notification.is_read ? '' : 'fw-bold';
-                const item = `
-                    <a class="dropdown-item ${isRead}" href="#" data-notification-id="${notification.id}">
-                        <div class="d-flex justify-content-between align-items-start">
-                            <div>
-                                <div class="mb-1">${notification.message}</div>
-                                <small class="text-muted">${formatDate(notification.created_at)}</small>
-                            </div>
-                            ${!notification.is_read ? '<span class="badge bg-primary rounded-pill">●</span>' : ''}
-                        </div>
-                    </a>
-                `;
-                $notificationsList.append(item);
-            });
-            
-            if (notifications.length > 5) {
-                $notificationsList.append('<hr class="dropdown-divider">');
-                $notificationsList.append('<a class="dropdown-item text-center" href="#">Все уведомления</a>');
-            }
-        }
-    }
-    
-    // Обработчик клика по уведомлению
-    $notificationsList.on('click', '[data-notification-id]', function(e) {
-        e.preventDefault();
-        const notificationId = $(this).data('notification-id');
-        markNotificationAsRead(notificationId);
-    });
-    
-    /**
-     * Отметка уведомления как прочитанного
-     */
-    function markNotificationAsRead(notificationId) {
-        $.ajax({
-            url: '/lks/php/common/mark_notification_read.php',
-            method: 'POST',
-            data: { notification_id: notificationId },
-            dataType: 'json',
-            success: function(response) {
-                if (response.success) {
-                    loadNotifications(); // Перезагружаем уведомления
-                }
-            },
-            error: function(xhr, status, error) {
-                console.error('Ошибка отметки уведомления:', error);
-            }
-        });
-    }
-}
-
-/**
- * Проверка, является ли текущая страница админской
- */
-function isAdminPage() {
-    return window.location.pathname.includes('/admin/');
-}
-
-/**
- * Загрузка статистики для админа
- */
-function loadAdminStats() {
-    // Загружаем статистику
-    $.get('/lks/php/admin/get_stats.php', function(data) {
-        if (data.success) {
-            // Обновляем счетчики
-            $('#users-count').text(data.users.total || '-');
-            $('#events-count').text(data.events.total || '-');
-            $('#registrations-count').text(data.registrations.total || '-');
-            $('#disk-usage').text(data.system.database_size || '-');
-            $('#files-count').text(data.files.total_files || '-');
-            $('#files-size').text(data.files.total_size || '-');
-            
-            // Обновляем статистику по ролям
-            if (data.users.by_role) {
-                $('#admin-count').text(data.users.by_role.Admin || 0);
-                $('#organizer-count').text(data.users.by_role.Organizer || 0);
-                $('#secretary-count').text(data.users.by_role.Secretary || 0);
-                $('#sportsman-count').text(data.users.by_role.Sportsman || 0);
-            }
-            
-            // Обновляем статистику регистраций
-            if (data.registrations) {
-                $('#paid-registrations').text(data.registrations.paid || 0);
-                $('#total-registrations').text(data.registrations.total || 0);
-            }
-            
-
-        }
-    }).fail(function(xhr, status, error) {
-        console.error('Не удалось загрузить статистику:', error);
-    });
-}
-
-/**
- * Форматирование даты
- */
-function formatDate(dateString) {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffMinutes = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-    
-    if (diffMinutes < 1) return 'только что';
-    if (diffMinutes < 60) return `${diffMinutes} мин назад`;
-    if (diffHours < 24) return `${diffHours} ч назад`;
-    if (diffDays < 7) return `${diffDays} дн назад`;
-    
-    return date.toLocaleDateString('ru-RU');
-}
-
-/**
- * Инициализация управления лодками
- */
-function initBoatsManagement() {
-    // Не запускаем на странице профиля, там есть встроенный код
-    if (window.location.pathname.includes('/profile.php')) {
         return;
     }
     
-    // Найти все чекбоксы лодок
-    var boatCheckboxes = document.querySelectorAll('input[name="boats[]"]');
-    
-    if (boatCheckboxes.length === 0) {
-        return;
-    }
-    
-    // Добавить обработчики событий
-    for (var i = 0; i < boatCheckboxes.length; i++) {
-        var checkbox = boatCheckboxes[i];
-        
-        checkbox.addEventListener('change', function() {
-            
-            // Проверяем роль пользователя перед сохранением
-            // Получаем роль из глобальной переменной или атрибута данных
-            var userRole = window.userRole || document.body.getAttribute('data-user-role');
-            
-            if (userRole === 'Organizer') {
-                this.checked = !this.checked; // Отменяем изменение
-                if (typeof showNotification === 'function') {
-                    showNotification('Организаторы не могут изменять типы лодок', 'warning');
-                } else {
-                    alert('Организаторы не могут изменять типы лодок');
-                }
-                return;
-            }
-            
-            if (userRole === 'Secretary') {
-                this.checked = !this.checked; // Отменяем изменение
-                if (typeof showNotification === 'function') {
-                    showNotification('Секретари не могут изменять типы лодок', 'warning');
-                } else {
-                    alert('Секретари не могут изменять типы лодок');
-                }
-                return;
-            }
-            
-            saveBoats();
-        });
-    }
-    
-    function saveBoats() {
-
-        
-        // Найти индикатор загрузки
-        var loadingIcon = document.querySelector('.boats-loading');
-        var successIcon = document.querySelector('.boats-success');
-        var errorIcon = document.querySelector('.boats-error');
-        
-        // Показать индикатор загрузки
-        if (loadingIcon) {
-            loadingIcon.style.display = 'inline-block';
-        }
-        if (successIcon) successIcon.style.display = 'none';
-        if (errorIcon) errorIcon.style.display = 'none';
-        
-        // Собрать выбранные лодки
-        var selectedBoats = [];
-        var checkboxes = document.querySelectorAll('input[name="boats[]"]:checked');
-        for (var i = 0; i < checkboxes.length; i++) {
-            selectedBoats.push(checkboxes[i].value);
-        }
-        
-
-        
-        // Отправить AJAX запрос
-        var xhr = new XMLHttpRequest();
-        xhr.open('POST', '/lks/php/user/manage-boats.php', true);
-        xhr.setRequestHeader('Content-Type', 'application/json');
-        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-        
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState === 4) {
-                
-                // Скрыть индикатор загрузки
-                if (loadingIcon) loadingIcon.style.display = 'none';
-                
-                if (xhr.status === 200) {
-                    try {
-                        var response = JSON.parse(xhr.responseText);
-                        
-                        if (response.success) {
-                            if (successIcon) {
-                                successIcon.style.display = 'inline-block';
-                                setTimeout(function() {
-                                    successIcon.style.display = 'none';
-                                }, 3000);
-                            }
-                        } else {
-                            console.error('🚤 Ошибка сохранения:', response.message);
-                            if (errorIcon) errorIcon.style.display = 'inline-block';
-                        }
-                    } catch (e) {
-                        console.error('🚤 Ошибка парсинга ответа:', e);
-                        if (errorIcon) errorIcon.style.display = 'inline-block';
-                    }
-                } else {
-                    console.error('🚤 HTTP ошибка:', xhr.status);
-                    if (errorIcon) errorIcon.style.display = 'inline-block';
-                }
-            }
-        };
-        
-        xhr.onerror = function() {
-            console.error('🚤 Ошибка сети');
-            if (loadingIcon) loadingIcon.style.display = 'none';
-            if (errorIcon) errorIcon.style.display = 'inline-block';
-        };
-        
-        // Отправить данные
-        var data = JSON.stringify({ boats: selectedBoats });
-        xhr.send(data);
-    }
-}
-
-/**
- * Показ уведомлений пользователю
- */
-function showNotification(message, type = 'info') {
-    // Создаем контейнер для уведомлений если его нет
-    let container = document.getElementById('notification-container');
-    if (!container) {
-        container = document.createElement('div');
-        container.id = 'notification-container';
-        container.style.position = 'fixed';
-        container.style.top = '20px';
-        container.style.right = '20px';
-        container.style.zIndex = '9999';
-        document.body.appendChild(container);
-    }
-    
-    // Определяем класс Bootstrap в зависимости от типа
-    let alertClass = 'alert-info';
-    let icon = 'bi-info-circle';
-    
-    switch(type) {
-        case 'success':
-            alertClass = 'alert-success';
-            icon = 'bi-check-circle';
-            break;
-        case 'error':
-            alertClass = 'alert-danger';
-            icon = 'bi-exclamation-triangle';
-            break;
-        case 'warning':
-            alertClass = 'alert-warning';
-            icon = 'bi-exclamation-triangle';
-            break;
-    }
-    
-    // Создаем уведомление
-    const notification = document.createElement('div');
-    notification.className = 'alert ' + alertClass + ' alert-dismissible fade show';
-    notification.style.minWidth = '300px';
-    notification.style.marginBottom = '10px';
-    notification.innerHTML = '<i class="bi ' + icon + ' me-2"></i>' + message + 
-                            '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
-    
-    container.appendChild(notification);
-    
-    // Автоматически скрываем через 4 секунды
-    setTimeout(function() {
-        if (notification.parentNode) {
-            notification.classList.remove('show');
-            setTimeout(function() {
-                if (notification.parentNode) {
-                    notification.parentNode.removeChild(notification);
-                }
-            }, 150);
-        }
-    }, 4000);
-} 
+    console.log('Bootstrap уже загружен, инициализируем компоненты...');
+    initComponents();
+}); 

@@ -25,7 +25,8 @@ try {
     require_once __DIR__ . '/Notification.php';
     
     $notification = new Notification();
-    $unreadNotifications = $notification->getUnreadNotifications($user['user_id']);
+    // Используем oid пользователя для работы с уведомлениями
+    $unreadNotifications = $notification->getUnreadNotifications($user['oid']);
     
     echo json_encode([
         'success' => true,

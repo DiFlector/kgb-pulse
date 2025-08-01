@@ -2,6 +2,7 @@
 session_start();
 require_once __DIR__ . '/../common/Auth.php';
 require_once __DIR__ . '/../db/Database.php';
+require_once __DIR__ . '/../helpers.php';
 
 // Проверка авторизации и прав доступа
 $auth = new Auth();
@@ -42,14 +43,15 @@ try {
                 // Извлекаем groupKey из имени файла (убираем _start.json или _finish.json)
                 $fullGroupKey = str_replace("_{$type}.json", '', $filename);
                 
-                // Используем полный groupKey как ключ
-                $groupKey = $fullGroupKey;
+                // Убираем префикс "finish_" если есть
+                $groupKey = preg_replace('/^finish_/', '', $fullGroupKey);
                 
                 $jsonData = file_get_contents($file);
                 $protocolData = json_decode($jsonData, true);
                 
                 if ($protocolData) {
                     $protocols[$groupKey] = $protocolData;
+                    error_log("Загружен протокол из файла: $filename -> $groupKey");
                 }
             }
         }
@@ -78,8 +80,9 @@ try {
                 continue; // Пропускаем некорректные дисциплины
             }
 
-            // Формируем ключ для группы с oid мероприятия
-            $groupKey = "{$meroId}_{$class}_{$sex}_{$distance}_{$ageGroup}";
+            // Формируем ключ для группы с правильным форматом для Redis
+            $normalizedSex = normalizeSexToEnglish($sex);
+            $groupKey = "{$meroId}_{$class}_{$normalizedSex}_{$distance}_{$ageGroup}";
             
             // Получаем данные протокола из Redis/JSON
             $protocolData = getProtocolData($meroId, $groupKey, $type);
@@ -93,6 +96,19 @@ try {
                     'drawConducted' => false,
                     'lastUpdated' => date('Y-m-d H:i:s')
                 ];
+            }
+            
+            // Синхронизируем стартовый и финишный протоколы
+            if ($type === 'start' && $protocolData && !empty($protocolData['participants'])) {
+                syncFinishProtocol($meroId, $groupKey, $protocolData);
+            }
+            
+            // Если это финишный протокол и данных нет, создаем на основе стартового
+            if ($type === 'finish' && (!$protocolData || empty($protocolData['participants']))) {
+                $startProtocolData = getProtocolData($meroId, $groupKey, 'start');
+                if ($startProtocolData && !empty($startProtocolData['participants'])) {
+                    $protocolData = syncFinishProtocol($meroId, $groupKey, $startProtocolData);
+                }
             }
             
             $protocols[$groupKey] = $protocolData;
@@ -118,13 +134,14 @@ function getProtocolData($meroId, $groupKey, $type) {
     try {
         $redis->connect('redis', 6379);
         
-        // Используем полный groupKey для Redis
-        $redisKey = "protocols:{$type}:{$groupKey}";
+        // Используем правильный формат ключа: protocol:groupKey_type
+        $redisKey = "protocol:{$groupKey}_{$type}";
         $data = $redis->get($redisKey);
         
         if ($data) {
             $protocolData = json_decode($data, true);
             if ($protocolData) {
+                error_log("Получены данные из Redis: $redisKey");
                 return $protocolData;
             }
         }
@@ -140,10 +157,27 @@ function getProtocolData($meroId, $groupKey, $type) {
         $protocolData = json_decode($jsonData, true);
         
         if ($protocolData) {
+            error_log("Получены данные из JSON: $jsonFilePath");
             return $protocolData;
         }
     }
+    
+    // Пробуем с префиксом "finish_" для финишных протоколов
+    if ($type === 'finish') {
+        $finishJsonFilePath = __DIR__ . "/../../files/json/protocols/{$meroId}/finish_{$groupKey}_{$type}.json";
+        
+        if (file_exists($finishJsonFilePath)) {
+            $jsonData = file_get_contents($finishJsonFilePath);
+            $protocolData = json_decode($jsonData, true);
+            
+            if ($protocolData) {
+                error_log("Получены данные из JSON с префиксом finish: $finishJsonFilePath");
+                return $protocolData;
+            }
+        }
+    }
 
+    error_log("Данные не найдены для: meroId=$meroId, groupKey=$groupKey, type=$type");
     return null;
 }
 
@@ -352,4 +386,52 @@ function calculateAgeGroup($age, $sex) {
     if ($age <= 79) return 'группа 9: 75-79';
     return 'группа 10: 80-150';
 }
-?> 
+
+/**
+ * Синхронизация финишного протокола со стартовым
+ */
+function syncFinishProtocol($meroId, $groupKey, $startProtocolData) {
+    // Создаем финишный протокол на основе стартового
+    $finishProtocolData = $startProtocolData;
+    $finishProtocolData['type'] = 'finish';
+    
+    // Добавляем поля для результатов к каждому участнику
+    foreach ($finishProtocolData['participants'] as &$participant) {
+        if (!isset($participant['place'])) {
+            $participant['place'] = null;
+        }
+        if (!isset($participant['finishTime'])) {
+            $participant['finishTime'] = null;
+        }
+    }
+    
+    // Сохраняем в Redis
+    $redis = new Redis();
+    try {
+        $redis->connect('redis', 6379);
+        $finishRedisKey = "protocol:{$groupKey}_finish";
+        $redis->setex($finishRedisKey, 86400 * 7, json_encode($finishProtocolData));
+        error_log("Синхронизирован финишный протокол в Redis: $finishRedisKey");
+    } catch (Exception $e) {
+        error_log("Ошибка синхронизации финишного протокола в Redis: " . $e->getMessage());
+    }
+    
+    // Сохраняем в JSON файл
+    $jsonDir = __DIR__ . "/../../files/json/protocols/{$meroId}";
+    if (!is_dir($jsonDir)) {
+        mkdir($jsonDir, 0777, true);
+    }
+    
+    // Проверяем, существует ли уже файл с префиксом "finish_"
+    $finishJsonFile = $jsonDir . "/finish_{$groupKey}_finish.json";
+    if (!file_exists($finishJsonFile)) {
+        // Если нет, создаем обычный файл
+        $finishJsonFile = $jsonDir . "/{$groupKey}_finish.json";
+    }
+    
+    file_put_contents($finishJsonFile, json_encode($finishProtocolData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+    error_log("Синхронизирован финишный протокол в JSON: $finishJsonFile");
+    
+    // Возвращаем данные финишного протокола
+    return $finishProtocolData;
+} 

@@ -31,7 +31,8 @@ try {
     require_once __DIR__ . '/Notification.php';
     
     $notification = new Notification();
-    $success = $notification->markAsRead($_POST['notification_id'], $user['userid']);
+    // Используем oid пользователя для работы с уведомлениями
+    $success = $notification->markAsRead($_POST['notification_id'], $user['oid']);
     
     echo json_encode([
         'success' => $success,

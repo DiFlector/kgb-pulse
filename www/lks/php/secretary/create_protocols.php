@@ -31,7 +31,9 @@ try {
     $createdCount = 0;
     foreach ($protocolsStructure as $discipline) {
         foreach ($discipline['ageGroups'] as $ageGroup) {
-            $groupKey = "{$discipline['key']}_{$ageGroup['name']}";
+            // Используем полное название возрастной группы с названием и возрастным диапазоном
+            $ageGroupName = isset($ageGroup['full_name']) ? $ageGroup['full_name'] : $ageGroup['name'];
+            $groupKey = "{$discipline['key']}_{$ageGroupName}";
             
             // Получаем участников для данной группы
             $participants = getParticipantsForGroup($db, $meroId, $discipline, $ageGroup);
@@ -173,7 +175,9 @@ function getParticipantsForGroup($db, $meroId, $discipline, $ageGroup) {
                 $currentYear = date('Y');
                 $age = $currentYear - $birthYear;
                 
-                if (isInAgeGroup($age, $ageGroup['name'])) {
+                // Используем полное название возрастной группы с названием и возрастным диапазоном
+                $ageGroupName = isset($ageGroup['full_name']) ? $ageGroup['full_name'] : $ageGroup['name'];
+                if (isInAgeGroup($age, $ageGroupName)) {
                     $filteredParticipants[] = [
                         'id' => $participant['userid'],
                         'fio' => $participant['fio'],

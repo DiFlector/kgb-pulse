@@ -189,6 +189,9 @@ include '../includes/header.php';
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3 mb-0 text-gray-800">Управление регистрациями</h1>
     <div class="btn-group">
+        <button type="button" class="btn btn-primary me-2" onclick="openCreateTeamModal()" title="Создать новую команду">
+            <i class="bi bi-plus-circle"></i> Создать команду
+        </button>
         <button type="button" class="btn btn-info me-2" onclick="openImportModal()">
             <i class="bi bi-upload"></i> Импорт регистраций
         </button>
@@ -350,11 +353,11 @@ include '../includes/header.php';
                                     <div>
                                         <span class="text-muted me-3">Оплачено: <?= $team['paid_count'] ?>/<?= $team['member_count'] ?></span>
                                         <strong><?= number_format($team['total_cost'], 0, '', '') ?> ₽</strong>
-                                        <button class="btn btn-sm btn-primary ms-2" onclick="showEditTeamModal(<?= $team['teamid'] ?>, '<?= $team['champn'] ?>')" title="Редактировать команду">
+                                        <button class="btn btn-sm btn-primary ms-2" onclick="showEditTeamModal(<?= $team['teamid'] ?? 0 ?>, <?= $team['champn'] ?>)" title="Редактировать команду">
                                             <i class="bi bi-pencil-square"></i> Редактировать
                                         </button>
                                         <?php if ($team['status'] === 'Ожидание команды'): ?>
-                                            <button class="btn btn-sm btn-success ms-2" onclick="confirmTeam('<?= $team['teamid'] ?>', '<?= $team['champn'] ?>')" title="Подтвердить команду">
+                                            <button class="btn btn-sm btn-success ms-2" onclick="confirmTeam(<?= $team['teamid'] ?? 0 ?>, <?= $team['champn'] ?>)" title="Подтвердить команду">
                                                 <i class="bi bi-check-circle"></i> Подтвердить команду
                                             </button>
                                         <?php endif; ?>
@@ -363,7 +366,7 @@ include '../includes/header.php';
                             </td>
                         </tr>
                         <?php foreach ($team['members'] as $registration): ?>
-                        <tr class="table-light" data-team-id="<?= htmlspecialchars($team['teamid']) ?>">
+                        <tr class="table-light" data-team-id="<?= htmlspecialchars($team['teamid'] ?? '') ?>">
                             <td>
                                 <input type="checkbox" class="form-check-input registration-checkbox" value="<?= $registration['oid'] ?>">
                             </td>
@@ -403,9 +406,9 @@ include '../includes/header.php';
                                                 
                                                 foreach ($distValues as $distance) {
                                                     // Убираем лишнее форматирование для дистанций
-                                                    $cleanDistance = str_replace(['м', 'м.', ' '], '', $distance);
+                                                    $cleanDistance = str_replace(['м', 'м', ' '], '', $distance);
                                                     foreach ($sexValues as $sex) {
-                                                        $sexLabel = $sex === 'M' ? 'М' : ($sex === 'W' ? 'Ж' : $sex);
+                                                        $sexLabel = normalizeSexToRussian($sex);
                                                         $disciplinesInfo[] = $cleanDistance . "м " . $sexLabel;
                                                     }
                                                 }
@@ -457,10 +460,10 @@ include '../includes/header.php';
                             <td>
                                 <div class="btn-group-vertical d-grid gap-1" role="group">
                                     <div class="btn-group" role="group">
-                                        <button class="btn btn-sm btn-outline-primary" onclick="editRegistration('<?= $registration['oid'] ?>')" title="Редактировать">
+                                        <button class="btn btn-sm btn-outline-primary" onclick="editRegistration(<?= $registration['oid'] ?>)" title="Редактировать">
                                             <i class="bi bi-pencil"></i>
                                         </button>
-                                        <button class="btn btn-sm btn-outline-danger" onclick="deleteRegistration('<?= $registration['oid'] ?>')" title="Удалить">
+                                        <button class="btn btn-sm btn-outline-danger" onclick="deleteRegistration(<?= $registration['oid'] ?>)" title="Удалить">
                                             <i class="bi bi-trash"></i>
                                         </button>
                                     </div>
@@ -515,9 +518,9 @@ include '../includes/header.php';
                                                 
                                                 foreach ($distValues as $distance) {
                                                     // Убираем лишнее форматирование для дистанций
-                                                    $cleanDistance = str_replace(['м', 'м.', ' '], '', $distance);
+                                                    $cleanDistance = str_replace(['м', 'м', ' '], '', $distance);
                                                     foreach ($sexValues as $sex) {
-                                                        $sexLabel = $sex === 'M' ? 'М' : ($sex === 'W' ? 'Ж' : $sex);
+                                                        $sexLabel = normalizeSexToRussian($sex);
                                                         $disciplinesInfo[] = $cleanDistance . "м " . $sexLabel;
                                                     }
                                                 }
@@ -570,32 +573,32 @@ include '../includes/header.php';
                                 <div class="btn-group-vertical d-grid gap-1" role="group">
                                     <!-- Кнопки быстрого изменения статуса -->
                                     <?php if ($registration['status'] === 'В очереди'): ?>
-                                        <button class="btn btn-sm btn-success" onclick="changeRegistrationStatus('<?= $registration['oid'] ?>', 'Подтверждён')" title="Подтвердить участие">
+                                        <button class="btn btn-sm btn-success" onclick="changeRegistrationStatus(<?= $registration['oid'] ?>, 'Подтверждён')" title="Подтвердить участие">
                                             <i class="bi bi-check-circle"></i> Подтвердить
                                         </button>
                                     <?php elseif ($registration['status'] === 'Подтверждён'): ?>
-                                        <button class="btn btn-sm btn-primary" onclick="changeRegistrationStatus('<?= $registration['oid'] ?>', 'Зарегистрирован')" title="Зарегистрировать на месте">
+                                        <button class="btn btn-sm btn-primary" onclick="changeRegistrationStatus(<?= $registration['oid'] ?>, 'Зарегистрирован')" title="Зарегистрировать на месте">
                                             <i class="bi bi-person-check"></i> Зарегистрировать
                                         </button>
                                     <?php elseif ($registration['status'] === 'Зарегистрирован'): ?>
-                                        <button class="btn btn-sm btn-warning" onclick="changeRegistrationStatus('<?= $registration['oid'] ?>', 'Неявка')" title="Отметить неявку">
+                                        <button class="btn btn-sm btn-warning" onclick="changeRegistrationStatus(<?= $registration['oid'] ?>, 'Неявка')" title="Отметить неявку">
                                             <i class="bi bi-x-circle"></i> Неявка
                                         </button>
                                     <?php endif; ?>
                                     
                                     <!-- Кнопка "Неявка" доступна для всех статусов, кроме "Дисквалифицирован", "Зарегистрирован" и "Неявка" -->
                                     <?php if (!in_array($registration['status'], ['Дисквалифицирован', 'Зарегистрирован', 'Неявка'])): ?>
-                                        <button class="btn btn-sm btn-outline-danger" onclick="changeRegistrationStatus('<?= $registration['oid'] ?>', 'Неявка')" title="Отметить неявку">
+                                        <button class="btn btn-sm btn-outline-danger" onclick="changeRegistrationStatus(<?= $registration['oid'] ?>, 'Неявка')" title="Отметить неявку">
                                             <i class="bi bi-person-x"></i> Неявка
                                         </button>
                                     <?php endif; ?>
                                     
                                     <!-- Обычные кнопки действий -->
                                     <div class="btn-group" role="group">
-                                        <button class="btn btn-sm btn-outline-primary" onclick="editRegistration('<?= $registration['oid'] ?>')" title="Редактировать">
+                                        <button class="btn btn-sm btn-outline-primary" onclick="editRegistration(<?= $registration['oid'] ?>)" title="Редактировать">
                                             <i class="bi bi-pencil"></i>
                                         </button>
-                                        <button class="btn btn-sm btn-outline-danger" onclick="deleteRegistration('<?= $registration['oid'] ?>')" title="Удалить">
+                                        <button class="btn btn-sm btn-outline-danger" onclick="deleteRegistration(<?= $registration['oid'] ?>)" title="Удалить">
                                             <i class="bi bi-trash"></i>
                                         </button>
                                     </div>
@@ -1054,7 +1057,7 @@ async function confirmTeam(teamid, champn) {
             });
             
             // Скрываем кнопку подтверждения команды
-            const confirmButton = document.querySelector(`button[onclick*="confirmTeam('${teamid}'"]`);
+            const confirmButton = document.querySelector(`button[onclick*="confirmTeam(${teamid}"]`);
             if (confirmButton) {
                 confirmButton.style.display = 'none';
             }
@@ -1444,6 +1447,10 @@ function createEditTeamModal(teamData) {
     const members = teamData.members || [];
     const reserves = teamData.reserves || [];
     
+    // Определяем тип лодки
+    const isDragonTeam = teamData.class === 'D-10' || teamData.class === 'Д-10';
+    const maxParticipants = isDragonTeam ? 14 : getBoatCapacity(teamData.class);
+    
     // Создаем HTML для модального окна
     const modalHtml = `
         <div class="modal fade" id="editTeamModal" tabindex="-1">
@@ -1452,7 +1459,7 @@ function createEditTeamModal(teamData) {
                     <div class="modal-header">
                         <h5 class="modal-title">
                             <i class="bi bi-people-fill me-2"></i>
-                            Редактирование команды драконов
+                            ${isDragonTeam ? 'Редактирование команды драконов' : 'Редактирование команды'}
                         </h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
@@ -1509,6 +1516,7 @@ function createEditTeamModal(teamData) {
                             </div>
                         </div>
                         
+                        ${isDragonTeam ? `
                         <div class="row">
                             <!-- Капитан -->
                             <div class="col-md-3 mb-4">
@@ -1528,8 +1536,8 @@ function createEditTeamModal(teamData) {
                                     <div class="card-header bg-info text-white">
                                         <h6 class="mb-0"><i class="bi bi-compass me-2"></i>Рулевой (1)</h6>
                                     </div>
-                                                            <div class="card-body coxswain-dropzone" data-role="coxswain" style="min-height: 120px;">
-                            ${coxswain ? createMemberCard(coxswain) : '<div class="text-muted text-center py-3">Рулевой не назначен<br><small>Перетащите участника сюда</small></div>'}
+                                    <div class="card-body coxswain-dropzone" data-role="coxswain" style="min-height: 120px;">
+                                        ${coxswain ? createMemberCard(coxswain) : '<div class="text-muted text-center py-3">Рулевой не назначен<br><small>Перетащите участника сюда</small></div>'}
                                     </div>
                                 </div>
                             </div>
@@ -1578,14 +1586,34 @@ function createEditTeamModal(teamData) {
                                 </div>
                             </div>
                         </div>
+                        ` : `
+                        <!-- Основной состав для обычных лодок -->
+                        <div class="row">
+                            <div class="col-12 mb-4">
+                                <div class="card">
+                                    <div class="card-header bg-primary text-white">
+                                        <h6 class="mb-0">
+                                            <i class="bi bi-people-fill me-2"></i>
+                                            Основной состав (${maxParticipants})
+                                        </h6>
+                                    </div>
+                                    <div class="card-body members-dropzone" data-role="member" style="min-height: 200px; max-height: 300px; overflow-y: auto;">
+                                        ${members.length > 0 ? members.map(member => createMemberCard(member)).join('') : '<div class="text-muted text-center py-3">Участники не назначены<br><small>Перетащите участников сюда</small></div>'}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        `}
                         
                         <input type="hidden" id="editTeamId" value="${teamData.teamid}">
                         <input type="hidden" id="editEventId" value="${teamData.eventId}">
+                        <input type="hidden" id="isDragonTeam" value="${isDragonTeam}">
+                        <input type="hidden" id="maxParticipants" value="${maxParticipants}">
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отменить</button>
-                        <button type="button" class="btn btn-success" onclick="autoAssignDragonRoles()">Авто-распределение ролей</button>
-                        <button type="button" class="btn btn-primary" onclick="saveDragonTeamChanges()">Сохранить изменения</button>
+                        ${isDragonTeam ? '<button type="button" class="btn btn-success" onclick="autoAssignDragonRoles()">Авто-распределение ролей</button>' : ''}
+                        <button type="button" class="btn btn-primary" onclick="saveTeamChanges()">Сохранить изменения</button>
                     </div>
                 </div>
             </div>
@@ -1598,57 +1626,43 @@ function createEditTeamModal(teamData) {
                 border-radius: 8px;
                 padding: 12px;
                 margin-bottom: 8px;
-                cursor: move;
-                transition: all 0.2s ease;
-                user-select: none;
+                cursor: grab;
+                transition: all 0.3s ease;
             }
             
             .member-card:hover {
-                background: #e9ecef;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                transform: translateY(-2px);
+                box-shadow: 0 4px 8px rgba(0,0,0,0.1);
             }
             
             .member-card.dragging {
                 opacity: 0.5;
-                transform: rotate(5deg);
+                cursor: grabbing;
             }
             
             .dropzone {
-                border: 2px dashed transparent;
-                border-radius: 8px;
+                min-height: 60px;
+                border: 2px dashed #dee2e6;
+                border-radius: 5px;
                 transition: all 0.3s ease;
+                padding: 10px;
             }
             
             .dropzone.drag-over {
                 border-color: #007bff;
-                background-color: rgba(0, 123, 255, 0.1);
+                background-color: #f8f9fa;
             }
             
-            .dropzone.invalid-drop {
-                border-color: #dc3545;
-                background-color: rgba(220, 53, 69, 0.1);
-            }
-            
-            .member-name {
-                font-weight: bold;
-                font-size: 14px;
-                line-height: 1.2;
-            }
-            
-            .member-email {
-                font-size: 12px;
+            .dropzone.empty {
+                display: flex;
+                align-items: center;
+                justify-content: center;
                 color: #6c757d;
-                line-height: 1.2;
-            }
-            
-            .member-status {
-                font-size: 11px;
-                margin-top: 4px;
             }
         </style>
     `;
     
-    // Удаляем предыдущее модальное окно если есть
+    // Удаляем существующее модальное окно если есть
     const existingModal = document.getElementById('editTeamModal');
     if (existingModal) {
         existingModal.remove();
@@ -1661,10 +1675,54 @@ function createEditTeamModal(teamData) {
     const modal = new bootstrap.Modal(document.getElementById('editTeamModal'));
     modal.show();
     
-    // Инициализируем Drag & Drop после показа модального окна
-    modal._element.addEventListener('shown.bs.modal', function() {
-        initializeDragonTeamDragDrop();
-    }, { once: true });
+    // Инициализируем drag & drop
+    initializeDragAndDrop();
+}
+
+// Функция для определения вместимости лодки
+function getBoatCapacity(boatClass) {
+    const normalizedClass = normalizeBoatClass(boatClass);
+    
+    switch (normalizedClass) {
+        case 'D-10':
+            return 14; // Драконы
+        case 'K-1':
+        case 'C-1':
+        case 'HD-1':
+        case 'OD-1':
+        case 'OC-1':
+            return 1; // Одиночки
+        case 'K-2':
+        case 'C-2':
+        case 'OD-2':
+            return 2; // Двойки
+        case 'K-4':
+        case 'C-4':
+            return 4; // Четверки
+        default:
+            return 1; // По умолчанию
+    }
+}
+
+// Функция нормализации класса лодки
+function normalizeBoatClass(classStr) {
+    if (!classStr) return '';
+    
+    const classMap = {
+        'К1': 'K-1', 'К-1': 'K-1',
+        'К2': 'K-2', 'К-2': 'K-2', 
+        'К4': 'K-4', 'К-4': 'K-4',
+        'С1': 'C-1', 'С-1': 'C-1',
+        'С2': 'C-2', 'С-2': 'C-2',
+        'С4': 'C-4', 'С-4': 'C-4',
+        'Д10': 'D-10', 'Д-10': 'D-10',
+        'HD1': 'HD-1', 'HD-1': 'HD-1',
+        'OD1': 'OD-1', 'OD-1': 'OD-1',
+        'OD2': 'OD-2', 'OD-2': 'OD-2',
+        'OC1': 'OC-1', 'OC-1': 'OC-1'
+    };
+    
+    return classMap[classStr.trim()] || classStr.trim();
 }
 
 /**
@@ -1687,20 +1745,72 @@ function autoAssignRoles() {
 }
 
 /**
- * Сохранение изменений команды
+ * Универсальная функция сохранения изменений команды
+ * Работает как для драконов, так и для обычных лодок
  */
 function saveTeamChanges() {
     const teamId = document.getElementById('editTeamId').value;
     const eventId = document.getElementById('editEventId').value;
-    const roleSelects = document.querySelectorAll('#teamMembersTable .role-select');
+    const isDragonTeam = document.getElementById('isDragonTeam').value === 'true';
+    const maxParticipants = parseInt(document.getElementById('maxParticipants').value);
     
+    // Собираем все изменения
     const changes = [];
-    roleSelects.forEach(select => {
+    const allMembers = document.querySelectorAll('.member-card');
+    
+    allMembers.forEach(member => {
+        const memberId = member.dataset.memberId;
+        const newRole = member.dataset.currentRole;
+        
         changes.push({
-            oid: select.dataset.memberId,
-            newRole: select.value
+            oid: memberId,
+            newRole: newRole
         });
     });
+    
+    if (changes.length === 0) {
+        showNotification('Нет изменений для сохранения', 'warning');
+        return;
+    }
+    
+    // Проверки для драконов
+    if (isDragonTeam) {
+        // Проверяем что есть капитан (обязательно)
+        const hasCaptain = changes.some(change => change.newRole === 'captain');
+        if (!hasCaptain) {
+            showNotification('Должен быть назначен капитан команды', 'error');
+            return;
+        }
+        
+        // Проверяем что есть минимум 1 гребец
+        const hasMembers = changes.some(change => change.newRole === 'member');
+        if (!hasMembers) {
+            showNotification('Должен быть назначен минимум 1 гребец', 'error');
+            return;
+        }
+        
+        // Проверяем общее количество участников (максимум 14 для драконов)
+        if (changes.length > 14) {
+            showNotification('Максимальное количество участников в команде драконов: 14', 'error');
+            return;
+        }
+    } else {
+        // Проверки для обычных лодок
+        if (changes.length > maxParticipants) {
+            showNotification(`Максимальное количество участников для данной лодки: ${maxParticipants}`, 'error');
+            return;
+        }
+        
+        if (changes.length === 0) {
+            showNotification('Команда должна содержать хотя бы одного участника', 'error');
+            return;
+        }
+        
+        // Для обычных лодок все участники должны быть гребцами
+        changes.forEach(change => {
+            change.newRole = 'member';
+        });
+    }
     
     fetch('/lks/php/organizer/save_team_changes.php', {
         method: 'POST',
@@ -1708,7 +1818,7 @@ function saveTeamChanges() {
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-            teamId: teamId,
+            teamId: parseInt(teamId),
             champn: eventId,
             changes: changes
         })
@@ -1716,7 +1826,10 @@ function saveTeamChanges() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            showNotification(`Изменения сохранены! Новый статус команды: ${data.newStatus}`, 'success');
+            const message = isDragonTeam ? 
+                'Изменения сохранены! Команда драконов готова к соревнованиям' : 
+                'Изменения сохранены! Команда готова к соревнованиям';
+            showNotification(message, 'success');
             
             // Закрываем модальное окно
             const modal = bootstrap.Modal.getInstance(document.getElementById('editTeamModal'));
@@ -1734,6 +1847,13 @@ function saveTeamChanges() {
         showNotification('Ошибка сохранения изменений: ' + error.message, 'error');
         console.error('Error:', error);
     });
+}
+
+/**
+ * Сохранение изменений команды драконов (для обратной совместимости)
+ */
+function saveDragonTeamChanges() {
+    saveTeamChanges();
 }
 
 /**
@@ -2061,80 +2181,6 @@ function autoAssignDragonRoles() {
     
     updateTeamCounts();
     showNotification('Роли автоматически распределены', 'success');
-}
-
-/**
- * Сохранение изменений команды драконов
- */
-function saveDragonTeamChanges() {
-    const teamId = document.getElementById('editTeamId').value;
-    const eventId = document.getElementById('editEventId').value;
-    
-    // Собираем все изменения
-    const changes = [];
-    const allMembers = document.querySelectorAll('.member-card');
-    
-    allMembers.forEach(member => {
-        const memberId = member.dataset.memberId;
-        const newRole = member.dataset.currentRole;
-        
-        changes.push({
-            oid: memberId,
-            newRole: newRole
-        });
-    });
-    
-    if (changes.length === 0) {
-        showNotification('Нет изменений для сохранения', 'warning');
-        return;
-    }
-    
-    // Проверяем что есть капитан (обязательно)
-    const hasCaptain = changes.some(change => change.newRole === 'captain');
-    if (!hasCaptain) {
-        showNotification('Должен быть назначен капитан команды', 'error');
-        return;
-    }
-    
-    // Проверяем что есть минимум 1 гребец
-    const hasMembers = changes.some(change => change.newRole === 'member');
-    if (!hasMembers) {
-        showNotification('Должен быть назначен минимум 1 гребец', 'error');
-        return;
-    }
-    
-    fetch('/lks/php/organizer/save_team_changes.php', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            teamId: parseInt(teamId),
-            champn: eventId,
-            changes: changes
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showNotification(`Изменения сохранены! Команда готова к соревнованиям.`, 'success');
-            
-            // Закрываем модальное окно
-            const modal = bootstrap.Modal.getInstance(document.getElementById('editTeamModal'));
-            modal.hide();
-            
-            // Перезагружаем страницу через 2 секунды
-            setTimeout(() => {
-                location.reload();
-            }, 2000);
-        } else {
-            showNotification('Ошибка: ' + data.error, 'error');
-        }
-    })
-    .catch(error => {
-        showNotification('Ошибка сохранения изменений: ' + error.message, 'error');
-        console.error('Error:', error);
-    });
 }
 
 /**
@@ -2722,6 +2768,647 @@ function executeMergeTeams() {
         showNotification('Ошибка объединения команд: ' + error.message, 'error');
         console.error('Error:', error);
     });
+}
+
+/**
+ * Инициализация drag & drop для модального окна
+ */
+function initializeDragAndDrop() {
+    // Добавляем обработчики для карточек участников
+    document.querySelectorAll('.member-card').forEach(card => {
+        card.addEventListener('dragstart', handleDragStart);
+        card.addEventListener('dragend', handleDragEnd);
+    });
+    
+    // Добавляем обработчики для зон сброса
+    document.querySelectorAll('.dropzone').forEach(zone => {
+        zone.addEventListener('dragover', handleDragOver);
+        zone.addEventListener('drop', handleDrop);
+        zone.addEventListener('dragenter', handleDragEnter);
+        zone.addEventListener('dragleave', handleDragLeave);
+    });
+}
+
+function handleDragStart(e) {
+    e.dataTransfer.setData('text/plain', e.target.dataset.memberId);
+    e.target.classList.add('dragging');
+}
+
+function handleDragEnd(e) {
+    e.target.classList.remove('dragging');
+}
+
+function handleDragOver(e) {
+    e.preventDefault();
+}
+
+function handleDragEnter(e) {
+    e.preventDefault();
+    e.currentTarget.classList.add('drag-over');
+}
+
+function handleDragLeave(e) {
+    e.currentTarget.classList.remove('drag-over');
+}
+
+function handleDrop(e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+    
+    const memberId = e.dataTransfer.getData('text/plain');
+    const card = document.querySelector(`[data-member-id="${memberId}"]`);
+    const targetZone = e.currentTarget;
+    
+    if (!card || !targetZone) return;
+    
+    // Получаем роль зоны
+    const targetRole = targetZone.dataset.role;
+    
+    // Проверяем лимиты ролей
+    if (!canMoveToZone(targetZone, targetRole)) {
+        showNotification('Превышен лимит участников для этой роли', 'error');
+        return;
+    }
+    
+    // Перемещаем карточку
+    targetZone.appendChild(card);
+    
+    // Обновляем роль
+    card.dataset.currentRole = targetRole;
+    
+    // Обновляем счетчики
+    updateCounters();
+}
+
+function canMoveToZone(zone, role) {
+    const isDragonTeam = document.getElementById('isDragonTeam').value === 'true';
+    const maxParticipants = parseInt(document.getElementById('maxParticipants').value);
+    
+    if (isDragonTeam) {
+        const limits = {
+            'captain': 1,
+            'coxswain': 1,
+            'drummer': 1,
+            'member': 9,
+            'reserve': 2
+        };
+        
+        const currentCount = zone.querySelectorAll('.member-card').length;
+        return currentCount < limits[role];
+    } else {
+        // Для не-драконов проверяем только общее количество
+        const totalParticipants = document.querySelectorAll('.member-card').length;
+        return totalParticipants <= maxParticipants;
+    }
+}
+
+function updateCounters() {
+    const isDragonTeam = document.getElementById('isDragonTeam').value === 'true';
+    
+    if (isDragonTeam) {
+        // Обновляем счетчики для драконов
+        const membersCount = document.querySelector('.members-dropzone').querySelectorAll('.member-card').length;
+        const reservesCount = document.querySelector('.reserves-dropzone').querySelectorAll('.member-card').length;
+        
+        document.getElementById('members-count').textContent = membersCount;
+        document.getElementById('reserves-count').textContent = reservesCount;
+    }
+}
+
+/**
+ * Создание карточки участника
+ */
+function createMemberCard(member) {
+    return `
+        <div class="member-card" data-member-id="${member.oid}" data-current-role="${member.role}" draggable="true">
+            <div class="d-flex justify-content-between align-items-start">
+                <div class="flex-grow-1">
+                    <div class="member-name">${member.fio}</div>
+                    <div class="member-email">${member.email}</div>
+                    <div class="member-status">
+                        <span class="badge bg-${getStatusColor(member.status)}">${member.status}</span>
+                    </div>
+                </div>
+                <div class="ms-2">
+                    <button type="button" class="btn btn-sm btn-outline-danger" 
+                            onclick="removeMemberFromTeam(${member.oid}, ${member.teamid || 'null'}, '${member.eventId || ''}')"
+                            title="Удалить из команды">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Получение цвета статуса
+ */
+function getStatusColor(status) {
+    switch(status) {
+        case 'В очереди': return 'warning';
+        case 'Подтверждён': return 'success';
+        case 'Зарегистрирован': return 'primary';
+        case 'Ожидание команды': return 'warning';
+        case 'Дисквалифицирован': return 'danger';
+        case 'Неявка': return 'secondary';
+        default: return 'secondary';
+    }
+}
+
+/**
+ * Открытие модального окна создания команды
+ */
+async function openCreateTeamModal() {
+    try {
+        // Загружаем данные о мероприятиях и классах
+        const response = await fetch('/lks/php/organizer/get_events_and_classes.php');
+        const data = await response.json();
+        
+        if (data.success) {
+            showCreateTeamModal(data.events);
+        } else {
+            showNotification('Ошибка загрузки данных: ' + data.message, 'error');
+        }
+    } catch (error) {
+        showNotification('Ошибка загрузки данных', 'error');
+        console.error('Error:', error);
+    }
+}
+
+/**
+ * Показ модального окна создания команды
+ */
+function showCreateTeamModal(events) {
+    const modalHtml = `
+        <div class="modal fade" id="createTeamModal" tabindex="-1">
+            <div class="modal-dialog modal-xl">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="bi bi-plus-circle me-2"></i>Создание новой команды
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="createTeamForm">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="createTeamEvent" class="form-label">Мероприятие *</label>
+                                        <select class="form-select" id="createTeamEvent" required onchange="onEventChange()">
+                                            <option value="">Выберите мероприятие</option>
+                                            ${events.map(event => `
+                                                <option value="${event.oid}" data-champn="${event.champn}">
+                                                    ${event.meroname} (${event.merodata})
+                                                </option>
+                                            `).join('')}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="createTeamClass" class="form-label">Класс лодки *</label>
+                                        <select class="form-select" id="createTeamClass" required onchange="onClassChange()" disabled>
+                                            <option value="">Сначала выберите мероприятие</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="createTeamName" class="form-label">Название команды *</label>
+                                        <input type="text" class="form-control" id="createTeamName" required>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="createTeamCity" class="form-label">Город команды</label>
+                                        <input type="text" class="form-control" id="createTeamCity">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <div class="mb-3">
+                                        <label class="form-label">Дистанции *</label>
+                                        <div id="distancesContainer" class="border rounded p-3">
+                                            <p class="text-muted">Выберите мероприятие и класс для отображения доступных дистанций</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <div class="mb-3">
+                                        <label class="form-label">Участники команды *</label>
+                                        <div class="border rounded p-3">
+                                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                                <span>Добавлено: <span id="selectedParticipantsCount">0</span></span>
+                                                <button type="button" class="btn btn-sm btn-primary" onclick="addParticipant()">
+                                                    <i class="bi bi-plus"></i> Добавить участника
+                                                </button>
+                                            </div>
+                                            <div id="participantsContainer">
+                                                <p class="text-muted">Нажмите "Добавить участника" для выбора участников</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отменить</button>
+                        <button type="button" class="btn btn-primary" onclick="saveTeam()">Создать команду</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Удаляем предыдущее модальное окно если есть
+    const existingModal = document.getElementById('createTeamModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Добавляем новое модальное окно
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // Сохраняем данные о мероприятиях
+    window.eventsData = events;
+    
+    // Показываем модальное окно
+    const modal = new bootstrap.Modal(document.getElementById('createTeamModal'));
+    modal.show();
+}
+
+/**
+ * Обработчик изменения мероприятия
+ */
+function onEventChange() {
+    const eventSelect = document.getElementById('createTeamEvent');
+    const classSelect = document.getElementById('createTeamClass');
+    const distancesContainer = document.getElementById('distancesContainer');
+    
+    if (!eventSelect.value) {
+        classSelect.disabled = true;
+        classSelect.innerHTML = '<option value="">Сначала выберите мероприятие</option>';
+        distancesContainer.innerHTML = '<p class="text-muted">Выберите мероприятие и класс для отображения доступных дистанций</p>';
+        return;
+    }
+    
+    // Находим выбранное мероприятие
+    const selectedEvent = window.eventsData.find(event => event.oid == eventSelect.value);
+    if (!selectedEvent) return;
+    
+    // Заполняем классы
+    classSelect.disabled = false;
+    classSelect.innerHTML = '<option value="">Выберите класс лодки</option>';
+    
+    Object.keys(selectedEvent.group_classes).forEach(className => {
+        const option = document.createElement('option');
+        option.value = className;
+        option.textContent = className;
+        classSelect.appendChild(option);
+    });
+    
+    // Очищаем дистанции
+    distancesContainer.innerHTML = '<p class="text-muted">Выберите класс для отображения доступных дистанций</p>';
+}
+
+/**
+ * Обработчик изменения класса
+ */
+function onClassChange() {
+    const eventSelect = document.getElementById('createTeamEvent');
+    const classSelect = document.getElementById('createTeamClass');
+    const distancesContainer = document.getElementById('distancesContainer');
+    
+    if (!eventSelect.value || !classSelect.value) return;
+    
+    // Находим выбранное мероприятие и класс
+    const selectedEvent = window.eventsData.find(event => event.oid == eventSelect.value);
+    const selectedClass = selectedEvent.group_classes[classSelect.value];
+    
+    if (!selectedClass) return;
+    
+    // Отладочная информация
+    console.log('Selected class:', selectedClass);
+    console.log('Distances:', selectedClass.dist);
+    
+    // Отображаем дистанции как отдельные чекбоксы
+    let distancesHtml = '<div class="row">';
+    
+    // Собираем все уникальные дистанции
+    const allDistances = new Set();
+    
+    // Обрабатываем дистанции из структуры class_distance
+    if (selectedClass.dist && Array.isArray(selectedClass.dist)) {
+        selectedClass.dist.forEach((distanceString, index) => {
+            console.log('Processing distance string:', distanceString);
+            
+            // Разбиваем строку дистанций на отдельные значения
+            // Убираем "м" и разбиваем по запятой
+            const cleanDistance = distanceString.replace(/м/g, '').trim();
+            const distanceValues = cleanDistance.split(',').map(d => d.trim());
+            
+            console.log('Distance values:', distanceValues);
+            
+            // Добавляем каждую дистанцию в Set (автоматически убирает дубликаты)
+            distanceValues.forEach(distValue => {
+                allDistances.add(distValue);
+            });
+        });
+    }
+    
+    // Создаем чекбоксы для уникальных дистанций
+    const uniqueDistances = Array.from(allDistances).sort((a, b) => parseInt(a) - parseInt(b));
+    console.log('Unique distances:', uniqueDistances);
+    
+    uniqueDistances.forEach((distValue, index) => {
+        const uniqueId = `distance_${index}`;
+        distancesHtml += `
+            <div class="col-md-4 mb-2">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="${uniqueId}" value="${distValue}" checked>
+                    <label class="form-check-label" for="${uniqueId}">
+                        ${distValue}м
+                    </label>
+                </div>
+            </div>
+        `;
+    });
+    
+    distancesHtml += '</div>';
+    
+    console.log('Final HTML:', distancesHtml);
+    distancesContainer.innerHTML = distancesHtml;
+}
+
+/**
+ * Добавление участника в команду
+ */
+async function addParticipant() {
+    const eventId = document.getElementById('createTeamEvent').value;
+    const classType = document.getElementById('createTeamClass').value;
+    
+    if (!eventId || !classType) {
+        showNotification('Сначала выберите мероприятие и класс', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/lks/php/organizer/get_available_participants.php?eventId=${eventId}&classType=${classType}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            showParticipantSelectionModal(data.participants);
+        } else {
+            showNotification('Ошибка загрузки участников: ' + data.message, 'error');
+        }
+    } catch (error) {
+        showNotification('Ошибка загрузки участников', 'error');
+        console.error('Error:', error);
+    }
+}
+
+/**
+ * Показ модального окна выбора участника
+ */
+function showParticipantSelectionModal(participants) {
+    const modalHtml = `
+        <div class="modal fade" id="participantSelectionModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Выбор участника</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="list-group">
+                            ${participants.map(participant => `
+                                <button type="button" class="list-group-item list-group-item-action" 
+                                        onclick="selectParticipant(${JSON.stringify(participant).replace(/"/g, '&quot;')})">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>${participant.fio}</strong>
+                                            <br><small class="text-muted">№${participant.userid} | ${participant.email}</small>
+                                        </div>
+                                        <span class="badge bg-${getStatusColor(participant.status)}">${participant.status}</span>
+                                    </div>
+                                </button>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отменить</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Удаляем предыдущее модальное окно если есть
+    const existingModal = document.getElementById('participantSelectionModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Добавляем новое модальное окно
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // Показываем модальное окно
+    const modal = new bootstrap.Modal(document.getElementById('participantSelectionModal'));
+    modal.show();
+}
+
+/**
+ * Выбор участника
+ */
+function selectParticipant(participant) {
+    // Закрываем модальное окно выбора
+    const modal = bootstrap.Modal.getInstance(document.getElementById('participantSelectionModal'));
+    modal.hide();
+    
+    // Добавляем участника в список
+    addParticipantToList(participant);
+}
+
+/**
+ * Добавление участника в список команды
+ */
+function addParticipantToList(participant) {
+    const container = document.getElementById('participantsContainer');
+    const countElement = document.getElementById('selectedParticipantsCount');
+    
+    // Создаем элемент участника
+    const participantElement = document.createElement('div');
+    participantElement.className = 'participant-item border rounded p-2 mb-2';
+    participantElement.dataset.userId = participant.oid;
+    participantElement.innerHTML = `
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <strong>${participant.fio}</strong>
+                <br><small class="text-muted">№${participant.userid}</small>
+            </div>
+            <div class="d-flex align-items-center">
+                <select class="form-select form-select-sm me-2" style="width: auto;" onchange="updateParticipantRole(this, ${participant.oid})">
+                    <option value="member">Гребец</option>
+                    <option value="captain">Капитан</option>
+                    <option value="coxswain">Рулевой</option>
+                    <option value="drummer">Барабанщик</option>
+                    <option value="reserve">Резерв</option>
+                </select>
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeParticipantFromList(this)">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        </div>
+    `;
+    
+    container.appendChild(participantElement);
+    
+    // Обновляем счетчик
+    const currentCount = container.querySelectorAll('.participant-item').length;
+    countElement.textContent = currentCount;
+    
+    // Очищаем сообщение о пустом списке
+    const emptyMessage = container.querySelector('p.text-muted');
+    if (emptyMessage) {
+        emptyMessage.remove();
+    }
+}
+
+/**
+ * Удаление участника из списка
+ */
+function removeParticipantFromList(button) {
+    const participantItem = button.closest('.participant-item');
+    participantItem.remove();
+    
+    // Обновляем счетчик
+    const container = document.getElementById('participantsContainer');
+    const countElement = document.getElementById('selectedParticipantsCount');
+    const currentCount = container.querySelectorAll('.participant-item').length;
+    countElement.textContent = currentCount;
+    
+    // Показываем сообщение если список пуст
+    if (currentCount === 0) {
+        container.innerHTML = '<p class="text-muted">Нажмите "Добавить участника" для выбора участников</p>';
+    }
+}
+
+/**
+ * Обновление роли участника
+ */
+function updateParticipantRole(select, participantId) {
+    const participantItem = select.closest('.participant-item');
+    participantItem.dataset.role = select.value;
+}
+
+/**
+ * Сохранение команды
+ */
+async function saveTeam() {
+    const eventId = document.getElementById('createTeamEvent').value;
+    const classType = document.getElementById('createTeamClass').value;
+    const teamName = document.getElementById('createTeamName').value;
+    const teamCity = document.getElementById('createTeamCity').value;
+    
+    if (!eventId || !classType || !teamName) {
+        showNotification('Заполните все обязательные поля', 'error');
+        return;
+    }
+    
+    // Получаем выбранные дистанции
+    const distanceCheckboxes = document.querySelectorAll('#distancesContainer input[type="checkbox"]:checked');
+    const distances = Array.from(distanceCheckboxes).map(cb => cb.value);
+    
+    if (distances.length === 0) {
+        showNotification('Выберите хотя бы одну дистанцию', 'error');
+        return;
+    }
+    
+    // Получаем участников
+    const participantItems = document.querySelectorAll('#participantsContainer .participant-item');
+    const participants = Array.from(participantItems).map(item => ({
+        userId: parseInt(item.dataset.userId),
+        role: item.dataset.role || 'member'
+    }));
+    
+    if (participants.length === 0) {
+        showNotification('Добавьте хотя бы одного участника', 'error');
+        return;
+    }
+    
+    // Проверяем лимиты участников
+    const maxParticipants = getBoatCapacity(classType);
+    if (participants.length > maxParticipants) {
+        showNotification(`Превышено максимальное количество участников для класса ${classType}. Максимум: ${maxParticipants}`, 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/lks/php/organizer/create_team.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                eventId: parseInt(eventId),
+                classType: classType,
+                teamName: teamName,
+                teamCity: teamCity,
+                participants: participants,
+                distances: distances
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification(data.message, 'success');
+            
+            // Закрываем модальное окно
+            const modal = bootstrap.Modal.getInstance(document.getElementById('createTeamModal'));
+            modal.hide();
+            
+            // Перезагружаем страницу для отображения новой команды
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            showNotification('Ошибка: ' + data.message, 'error');
+        }
+    } catch (error) {
+        showNotification('Ошибка создания команды', 'error');
+        console.error('Error:', error);
+    }
+}
+
+/**
+ * Получает вместимость лодки по классу
+ */
+function getBoatCapacity(boatType) {
+    const capacities = {
+        'K-2': 2,
+        'K-4': 4,
+        'C-2': 2,
+        'C-4': 4,
+        'D-10': 14, // 10 гребцов + рулевой + барабанщик + 2 резерва
+        'HD-1': 1,
+        'OD-1': 1,
+        'OD-2': 2,
+        'OC-1': 1
+    };
+    
+    return capacities[boatType] || 1;
 }
 </script>
 

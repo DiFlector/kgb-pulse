@@ -48,14 +48,12 @@ $isSuperUser = $auth->isSuperUser();
         <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <!-- Custom CSS -->
     <link href="/lks/css/style.css?v=1.7" rel="stylesheet">
-    <!-- Header Dropdown Fix CSS -->
-    <link href="/lks/css/style-clean.css" rel="stylesheet">
     <!-- Protocols New CSS -->
     <link href="/lks/css/protocols-new.css" rel="stylesheet">
     <!-- Подключаем стили -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <!-- Chart.js для графиков -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.js"></script>
+    <!-- Chart.js для графиков (загружается только при необходимости) -->
+    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.js"></script> -->
     
     <!-- Modal backdrop fix (временно отключен для отладки) -->
     <!-- <script src="/lks/js/modal-fix.js"></script> -->
@@ -115,7 +113,7 @@ $isSuperUser = $auth->isSuperUser();
 
                 <!-- Пользователь -->
                 <div class="dropdown user-menu">
-                    <button class="btn btn-outline-light dropdown-toggle" type="button" id="userMenuDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                    <button class="btn btn-outline-light" type="button" id="userMenuDropdown" data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="bi bi-person-circle me-1"></i>
                         <?= htmlspecialchars($user_name) ?>
                     </button>
@@ -152,16 +150,6 @@ $isSuperUser = $auth->isSuperUser();
                 // Многоуровневое меню для суперпользователя
                 $menu = [
                     [
-                        'title' => 'Быстрые действия',
-                        'icon' => 'bi bi-lightning',
-                        'submenu' => [
-                            ['href' => '/lks/enter/admin/queue.php', 'icon' => 'bi bi-clock', 'title' => 'Очередь спортсменов'],
-                            ['href' => '/lks/enter/user/statistics.php', 'icon' => 'bi bi-trophy', 'title' => 'Моя статистика'],
-                            ['href' => '/lks/enter/organizer/create-event.php', 'icon' => 'bi bi-plus-circle', 'title' => 'Создать мероприятие'],
-                            ['href' => '/lks/enter/admin/events.php', 'icon' => 'bi bi-calendar-event', 'title' => 'Все мероприятия'],
-                        ]
-                    ],
-                    [
                         'title' => 'Админ',
                         'icon' => 'bi bi-shield-check',
                         'submenu' => [
@@ -171,7 +159,8 @@ $isSuperUser = $auth->isSuperUser();
                             ['href' => '/lks/enter/admin/files.php', 'icon' => 'bi bi-folder', 'title' => 'Файлы'],
                             ['href' => '/lks/enter/admin/data.php', 'icon' => 'bi bi-database', 'title' => 'Работа с данными'],
                             ['href' => '/lks/enter/admin/boats.php', 'icon' => 'fa-solid fa-ship', 'title' => 'Классы лодок'],
-                            ['href' => '/lks/enter/admin/statistics.php', 'icon' => 'bi bi-bar-chart', 'title' => 'Админ статистика'],
+                            ['href' => '/lks/enter/admin/queue.php', 'icon' => 'bi bi-clock', 'title' => 'Очередь спортсменов'],
+                            ['href' => '/lks/enter/admin/events.php', 'icon' => 'bi bi-calendar-event', 'title' => 'Все мероприятия'],
                         ]
                     ],
                     [
@@ -183,6 +172,7 @@ $isSuperUser = $auth->isSuperUser();
                             ['href' => '/lks/enter/organizer/registrations.php', 'icon' => 'bi bi-clipboard-check', 'title' => 'Регистрации'],
                             ['href' => '/lks/enter/organizer/queue.php', 'icon' => 'bi bi-clock', 'title' => 'Очередь (орг)'],
                             ['href' => '/lks/enter/organizer/calendar.php', 'icon' => 'bi bi-calendar3', 'title' => 'Календарь'],
+                            ['href' => '/lks/enter/organizer/create-event.php', 'icon' => 'bi bi-plus-circle', 'title' => 'Создать мероприятие'],
                         ]
                     ],
                     [
@@ -203,6 +193,7 @@ $isSuperUser = $auth->isSuperUser();
                             ['href' => '/lks/enter/user/', 'icon' => 'bi bi-house', 'title' => 'Главная'],
                             ['href' => '/lks/enter/user/calendar.php', 'icon' => 'bi bi-calendar3', 'title' => 'Календарь'],
                             ['href' => '/lks/enter/common/profile.php', 'icon' => 'bi bi-person-circle', 'title' => 'Профиль'],
+                            ['href' => '/lks/enter/user/statistics.php', 'icon' => 'bi bi-trophy', 'title' => 'Моя статистика'],
                         ]
                     ]
                 ];
@@ -218,7 +209,6 @@ $isSuperUser = $auth->isSuperUser();
                         ['href' => '/lks/enter/admin/files.php', 'icon' => 'bi bi-folder', 'title' => 'Файлы'],
                         ['href' => '/lks/enter/admin/data.php', 'icon' => 'bi bi-database', 'title' => 'Работа с данными'],
                         ['href' => '/lks/enter/admin/boats.php', 'icon' => 'fa-solid fa-ship', 'title' => 'Классы лодок'],
-                        ['href' => '/lks/enter/admin/statistics.php', 'icon' => 'bi bi-bar-chart', 'title' => 'Статистика'],
                     ];
                     break;
                     
@@ -357,5 +347,4 @@ $isSuperUser = $auth->isSuperUser();
         <!-- Здесь начинается контент страницы -->
 
         <!-- Подключаем скрипты -->
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
         <script src="/lks/js/registration.js"></script>

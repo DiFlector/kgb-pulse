@@ -29,6 +29,7 @@ try {
     $search = trim($input['search'] ?? '');
     $champn = $input['champn'] ?? null;
     $excludeTeamId = $input['excludeTeamId'] ?? null;
+    $teamClass = $input['teamClass'] ?? null; // Добавляем класс команды
     
     if (empty($search) || empty($champn)) {
         throw new Exception('Не указаны параметры поиска');
@@ -51,7 +52,8 @@ try {
             lr.discipline,
             u.fio,
             u.email,
-            u.telephone
+            u.telephone,
+            u.userid
         FROM listreg lr
         JOIN users u ON lr.users_oid = u.oid
         JOIN meros m ON lr.meros_oid = m.oid
@@ -83,32 +85,46 @@ try {
     $filteredParticipants = [];
     
     foreach ($participants as $participant) {
-        // Проверяем, что участник подходит для команды драконов
+        // Проверяем, что участник подходит для команды
         $classDistance = json_decode($participant['discipline'], true);
-        $isDragonCompatible = false;
+        $isCompatible = false;
         
         if (is_array($classDistance)) {
             foreach ($classDistance as $boatType => $details) {
-                if ($boatType === 'D-10') {
-                    $isDragonCompatible = true;
+                // Если указан класс команды, проверяем совместимость
+                if ($teamClass && $boatType === $teamClass) {
+                    $isCompatible = true;
+                    break;
+                }
+                // Если класс команды не указан, принимаем всех участников
+                if (!$teamClass) {
+                    $isCompatible = true;
                     break;
                 }
             }
         }
         
-        if ($isDragonCompatible) {
+        if ($isCompatible) {
+            // Добавляем информацию о команде, если участник уже в команде
+            if ($participant['teams_oid']) {
+                $stmt = $pdo->prepare("SELECT teamid FROM teams WHERE oid = ?");
+                $stmt->execute([$participant['teams_oid']]);
+                $participant['teamid'] = $stmt->fetchColumn();
+            } else {
+                $participant['teamid'] = null;
+            }
+            
             $filteredParticipants[] = $participant;
         }
     }
     
     echo json_encode([
         'success' => true,
-        'participants' => $filteredParticipants,
-        'total' => count($filteredParticipants)
+        'participants' => $filteredParticipants
     ]);
     
 } catch (Exception $e) {
-    error_log("Ошибка поиска участников: " . $e->getMessage());
+    http_response_code(400);
     echo json_encode([
         'success' => false,
         'error' => $e->getMessage()

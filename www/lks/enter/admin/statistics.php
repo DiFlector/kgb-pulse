@@ -1,6 +1,6 @@
 <?php
 // Статистика системы - Администратор
-session_start();
+// session_start() уже вызван в header.php
 
 // Проверка авторизации
 if (!isset($_SESSION['authenticated']) || $_SESSION['authenticated'] !== true) {
@@ -75,7 +75,14 @@ $additionalCSS = [];
 </head>
 <body class="authenticated-page" data-user-role="<?= htmlspecialchars($_SESSION['user_role']) ?>">
 
-<?php include '../includes/header.php'; ?>
+<?php 
+// Проверяем, что header.php существует
+$headerPath = __DIR__ . '/../includes/header.php';
+if (!file_exists($headerPath)) {
+    die('Ошибка: header.php не найден по пути: ' . $headerPath);
+}
+include $headerPath; 
+?>
 
 <main id="mainContent" class="main-content">
     <div class="container-fluid px-4">
@@ -319,7 +326,7 @@ $additionalCSS = [];
     </div>
 </main>
 
-<?php include '../includes/footer.php'; ?>
+<?php include __DIR__ . '/../includes/footer.php'; ?>
 
 <!-- Bootstrap 5 JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -334,6 +341,17 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('eventsStatus').textContent = 'Ошибка: Chart.js не загружен';
         return;
     }
+    
+    // Дополнительная проверка через небольшую задержку
+    setTimeout(() => {
+        if (typeof Chart === 'undefined') {
+            console.error('❌ Chart.js все еще не загружен после задержки!');
+            document.getElementById('rolesStatus').textContent = 'Ошибка: Chart.js не загружен';
+            document.getElementById('eventsStatus').textContent = 'Ошибка: Chart.js не загружен';
+            return;
+        }
+        console.log('✅ Chart.js успешно загружен');
+    }, 100);
 
     // График распределения пользователей по ролям
     try {

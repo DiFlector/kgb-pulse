@@ -119,16 +119,10 @@ class EventRegistration
             // Обрабатываем полы и переводим на русский
             $sexes = [];
             if (isset($data['sex']) && is_array($data['sex'])) {
-                $sexMapping = [
-                    'M' => 'М',
-                    'W' => 'Ж', 
-                    'MIX' => 'MIX'
-                ];
-                
                 foreach ($data['sex'] as $sex) {
-                    if (isset($sexMapping[$sex])) {
-                        $sexes[] = $sexMapping[$sex];
-                    }
+                    // Нормализуем пол в русский формат
+                    $normalizedSex = normalizeSexToRussian($sex);
+                    $sexes[] = $normalizedSex;
                 }
             }
             
@@ -174,18 +168,10 @@ class EventRegistration
             if ($event && isset($event['class_distance'][$class]['sex'])) {
                 $classSexes = $event['class_distance'][$class]['sex'];
                 
-                // Переводим английские полы в русские
-                $sexMapping = [
-                    'M' => 'М',
-                    'W' => 'Ж', 
-                    'MIX' => 'MIX'
-                ];
-                
+                // Нормализуем полы в русский формат
                 $translatedSexes = [];
                 foreach ($classSexes as $sex) {
-                    if (isset($sexMapping[$sex])) {
-                        $translatedSexes[] = $sexMapping[$sex];
-                    }
+                    $translatedSexes[] = normalizeSexToRussian($sex);
                 }
                 
                 $sexes = array_intersect($sexes, $translatedSexes);

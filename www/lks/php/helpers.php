@@ -21,6 +21,78 @@ const SPORT_RANKINGS = [
 ];
 
 /**
+ * Нормализация пола в английский формат (M/W)
+ * @param string $sex Пол в любом формате (М/Ж/M/W)
+ * @return string Нормализованный пол (M/W)
+ */
+function normalizeSexToEnglish($sex) {
+    $sex = trim($sex);
+    switch ($sex) {
+        case 'М':
+        case 'M':
+            return 'M';
+        case 'Ж':
+        case 'W':
+        case 'F':
+            return 'W';
+        case 'MIX':
+        case 'Смешанные':
+            return 'MIX';
+        default:
+            return $sex; // Возвращаем как есть для неизвестных значений
+    }
+}
+
+/**
+ * Нормализация пола в русский формат (М/Ж)
+ * @param string $sex Пол в любом формате (М/Ж/M/W)
+ * @return string Нормализованный пол (М/Ж)
+ */
+function normalizeSexToRussian($sex) {
+    $sex = trim($sex);
+    switch ($sex) {
+        case 'М':
+        case 'M':
+            return 'М';
+        case 'Ж':
+        case 'W':
+        case 'F':
+            return 'Ж';
+        case 'MIX':
+        case 'Смешанные':
+            return 'MIX';
+        default:
+            return $sex; // Возвращаем как есть для неизвестных значений
+    }
+}
+
+/**
+ * Универсальная функция нормализации пола (по умолчанию в русский)
+ * @param string $sex Пол в любом формате
+ * @param string $targetFormat Целевой формат ('russian' или 'english')
+ * @return string Нормализованный пол
+ */
+function normalizeSex($sex, $targetFormat = 'russian') {
+    if ($targetFormat === 'english') {
+        return normalizeSexToEnglish($sex);
+    } else {
+        return normalizeSexToRussian($sex);
+    }
+}
+
+/**
+ * Сравнение полов с учетом разных форматов
+ * @param string $sex1 Первый пол
+ * @param string $sex2 Второй пол
+ * @return bool True если полы совпадают
+ */
+function compareSex($sex1, $sex2) {
+    $normalized1 = normalizeSexToEnglish($sex1);
+    $normalized2 = normalizeSexToEnglish($sex2);
+    return $normalized1 === $normalized2;
+}
+
+/**
  * Получение описаний типов лодок из базы данных
  * @return array Массив типов лодок с описаниями
  */

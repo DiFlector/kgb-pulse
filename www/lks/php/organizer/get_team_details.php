@@ -152,6 +152,7 @@ try {
             'meroname' => $event['meroname'],
             'eventId' => $eventId,
             'status' => $teamStatus,
+            'class' => $team['class'], // Добавляем класс лодки
             'captain' => $captain,
             'coxswain' => $coxswain,
             'drummer' => $drummer,

@@ -1,6 +1,6 @@
 <?php
 /**
- * Редактирование команды драконов
+ * Редактирование команды
  * Возможность замены основного состава на резервистов
  */
 
@@ -48,7 +48,9 @@ try {
             u.telephone,
             t.teamname,
             t.teamcity,
-            m.meroname
+            t.class,
+            m.meroname,
+            m.class_distance
         FROM listreg lr
         JOIN users u ON lr.users_oid = u.oid
         JOIN teams t ON lr.teams_oid = t.oid
@@ -73,26 +75,102 @@ try {
     
     $teamInfo = $participants[0];
     
-    // Проверяем, что это команда драконов
+    // Отладочная информация
+    error_log("edit-team.php: teamInfo['class'] = " . var_export($teamInfo['class'], true));
+    error_log("edit-team.php: teamInfo['discipline'] = " . var_export($teamInfo['discipline'], true));
+    
+    // Функция нормализации класса лодки
+    function normalizeBoatClass($class) {
+        $class = trim($class);
+        
+        // Маппинг русских букв на английские
+        $classMap = [
+            'К1' => 'K-1', 'К-1' => 'K-1',
+            'К2' => 'K-2', 'К-2' => 'K-2', 
+            'К4' => 'K-4', 'К-4' => 'K-4',
+            'С1' => 'C-1', 'С-1' => 'C-1',
+            'С2' => 'C-2', 'С-2' => 'C-2',
+            'С4' => 'C-4', 'С-4' => 'C-4',
+            'Д10' => 'D-10', 'Д-10' => 'D-10',
+            'HD1' => 'HD-1', 'HD-1' => 'HD-1',
+            'OD1' => 'OD-1', 'OD-1' => 'OD-1',
+            'OD2' => 'OD-2', 'OD-2' => 'OD-2',
+            'OC1' => 'OC-1', 'OC-1' => 'OC-1'
+        ];
+        
+        return $classMap[$class] ?? $class;
+    }
+    
+    // Определяем тип лодки и максимальное количество участников
     $discipline = json_decode($teamInfo['discipline'], true);
     $isDragonTeam = false;
-    if (is_array($discipline)) {
+    $maxParticipants = 1; // По умолчанию
+    
+    // Нормализуем класс команды
+    $normalizedClass = normalizeBoatClass($teamInfo['class']);
+    error_log("edit-team.php: Нормализованный класс = " . $normalizedClass);
+    
+    // Сначала проверяем класс команды
+    if ($normalizedClass === 'D-10') {
+        $isDragonTeam = true;
+        $maxParticipants = 14; // Максимум для драконов
+        error_log("edit-team.php: Определен как дракон по class команды");
+    } else {
+        // Для остальных лодок определяем количество по названию
+        $maxParticipants = getBoatCapacity($normalizedClass);
+        error_log("edit-team.php: Определен как обычная лодка, class = " . $normalizedClass . ", maxParticipants = " . $maxParticipants);
+    }
+    
+    // Если не удалось определить из class команды, пробуем из discipline
+    if ($maxParticipants === 1 && is_array($discipline)) {
         foreach ($discipline as $boatType => $details) {
-            if ($boatType === 'D-10') {
+            $normalizedBoatType = normalizeBoatClass($boatType);
+            if ($normalizedBoatType === 'D-10') {
                 $isDragonTeam = true;
+                $maxParticipants = 14; // Максимум для драконов
+                error_log("edit-team.php: Определен как дракон по discipline");
+                break;
+            } else {
+                // Для остальных лодок определяем количество по названию
+                $maxParticipants = getBoatCapacity($normalizedBoatType);
+                error_log("edit-team.php: Определен как обычная лодка по discipline, boatType = " . $normalizedBoatType . ", maxParticipants = " . $maxParticipants);
                 break;
             }
         }
     }
     
-    if (!$isDragonTeam) {
-        throw new Exception('Редактирование доступно только для команд драконов D-10');
-    }
+    error_log("edit-team.php: Финальный результат - isDragonTeam = " . ($isDragonTeam ? 'true' : 'false') . ", maxParticipants = " . $maxParticipants);
     
 } catch (Exception $e) {
     $_SESSION['error'] = $e->getMessage();
     header('Location: queue.php');
     exit;
+}
+
+// Функция для определения вместимости лодки
+function getBoatCapacity($boatType) {
+    // Нормализуем класс лодки
+    $normalizedBoatType = normalizeBoatClass($boatType);
+    
+    switch ($normalizedBoatType) {
+        case 'D-10':
+            return 14; // Драконы
+        case 'K-1':
+        case 'C-1':
+        case 'HD-1':
+        case 'OD-1':
+        case 'OC-1':
+            return 1; // Одиночки
+        case 'K-2':
+        case 'C-2':
+        case 'OD-2':
+            return 2; // Двойки
+        case 'K-4':
+        case 'C-4':
+            return 4; // Четверки
+        default:
+            return 1; // По умолчанию
+    }
 }
 
 include '../includes/header.php';
@@ -145,12 +223,19 @@ include '../includes/header.php';
     font-size: 0.75rem;
     font-weight: bold;
 }
+
+/* Скрываем секции для не-драконов */
+.dragon-only {
+    display: <?= $isDragonTeam ? 'block' : 'none' ?>;
+}
 </style>
 
 <!-- Заголовок страницы -->
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-        <h1 class="h3 mb-0">Редактирование команды драконов</h1>
+        <h1 class="h3 mb-0">
+            <?= $isDragonTeam ? 'Редактирование команды драконов' : 'Редактирование команды' ?>
+        </h1>
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb">
                 <li class="breadcrumb-item"><a href="index.php">Главная</a></li>
@@ -198,6 +283,18 @@ include '../includes/header.php';
                         <span class="badge bg-warning"><?= htmlspecialchars($teamInfo['status']) ?></span>
                     </div>
                 </div>
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <strong>Тип лодки:</strong><br>
+                        <span class="text-muted">
+                            <?= $isDragonTeam ? 'D-10 (Драконы)' : htmlspecialchars($teamInfo['class'] ?? 'Не указан') ?>
+                        </span>
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Максимум участников:</strong><br>
+                        <span class="text-muted"><?= $maxParticipants ?> человек</span>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -205,27 +302,36 @@ include '../includes/header.php';
 
 <!-- Инструкции -->
 <div class="alert alert-info">
-    <h6><i class="bi bi-lightbulb"></i> Инструкции по редактированию команды драконов D-10:</h6>
+    <h6><i class="bi bi-lightbulb"></i> Инструкции по редактированию команды:</h6>
     <ul class="mb-0">
         <li>Перетаскивайте участников между разделами для изменения их ролей</li>
+        <?php if ($isDragonTeam): ?>
         <li><strong>Обязательные роли:</strong> 1 капитан (минимум 1 гребец для начала)</li>
         <li><strong>Гибкие роли:</strong> Рулевой и Барабанщик назначаются по необходимости</li>
         <li><strong>Максимум участников:</strong> 14 человек в команде (основной состав + резерв)</li>
         <li><strong>Оптимальный состав:</strong> 1 капитан + 9 гребцов + 1 рулевой + 1 барабанщик = 12 основных + до 2 резервных</li>
+        <?php else: ?>
+        <li><strong>Состав команды:</strong> Только гребцы (максимум <?= $maxParticipants ?> человек)</li>
+        <li><strong>Ограничения:</strong> Количество участников не может превышать вместимость лодки</li>
+        <?php endif; ?>
         <li>Изменения сохранятся только после нажатия кнопки "Сохранить изменения"</li>
     </ul>
 </div>
 
 <!-- Основной состав -->
 <div class="row">
-    <div class="col-md-8">
+    <div class="col-md-<?= $isDragonTeam ? '8' : '12' ?>">
         <div class="card">
             <div class="card-header bg-success text-white">
-                <h5 class="mb-0"><i class="bi bi-people-fill"></i> Основной состав (до 14 человек)</h5>
+                <h5 class="mb-0">
+                    <i class="bi bi-people-fill"></i> 
+                    <?= $isDragonTeam ? 'Основной состав (до 14 человек)' : 'Состав команды (до ' . $maxParticipants . ' человек)' ?>
+                </h5>
             </div>
             <div class="card-body">
-                <!-- Капитан -->
-                <div class="mb-3">
+                <?php if ($isDragonTeam): ?>
+                <!-- Капитан (только для драконов) -->
+                <div class="mb-3 dragon-only">
                     <h6 class="text-success">Капитан (1 обязательно)</h6>
                     <div id="captain-zone" class="drop-zone role-main p-2">
                         <!-- Участники будут добавлены через JavaScript -->
@@ -240,26 +346,36 @@ include '../includes/header.php';
                     </div>
                 </div>
                 
-                <!-- Рулевой -->
-                <div class="mb-3">
+                <!-- Рулевой (только для драконов) -->
+                <div class="mb-3 dragon-only">
                     <h6 class="text-info">Рулевой (0-1, назначается по необходимости)</h6>
                     <div id="coxswain-zone" class="drop-zone role-special p-2">
                         <!-- Участники будут добавлены через JavaScript -->
                     </div>
                 </div>
                 
-                <!-- Барабанщик -->
-                <div class="mb-3">
+                <!-- Барабанщик (только для драконов) -->
+                <div class="mb-3 dragon-only">
                     <h6 class="text-info">Барабанщик (0-1, назначается по необходимости)</h6>
                     <div id="drummer-zone" class="drop-zone role-special p-2">
                         <!-- Участники будут добавлены через JavaScript -->
                     </div>
                 </div>
+                <?php else: ?>
+                <!-- Только гребцы для остальных лодок -->
+                <div class="mb-3">
+                    <h6 class="text-success">Гребцы (максимум <?= $maxParticipants ?> человек)</h6>
+                    <div id="paddlers-zone" class="drop-zone role-main p-2">
+                        <!-- Участники будут добавлены через JavaScript -->
+                    </div>
+                </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
     
-    <!-- Резерв -->
+    <?php if ($isDragonTeam): ?>
+    <!-- Резерв (только для драконов) -->
     <div class="col-md-4">
         <div class="card">
             <div class="card-header bg-warning text-dark">
@@ -275,6 +391,7 @@ include '../includes/header.php';
             </div>
         </div>
     </div>
+    <?php endif; ?>
 </div>
 
 <!-- Скрытые данные для JavaScript -->
@@ -282,7 +399,10 @@ include '../includes/header.php';
 const teamData = {
     teamId: <?= json_encode($teamId) ?>,
     champn: <?= json_encode($champn) ?>,
-    participants: <?= json_encode($participants) ?>
+    participants: <?= json_encode($participants) ?>,
+    isDragonTeam: <?= json_encode($isDragonTeam) ?>,
+    maxParticipants: <?= json_encode($maxParticipants) ?>,
+    teamClass: <?= json_encode($normalizedClass ?? $teamInfo['class'] ?? null) ?>
 };
 
 let changes = [];
@@ -298,22 +418,30 @@ function initializeTeamEditor() {
     participants.forEach(participant => {
         const card = createParticipantCard(participant);
         
-        switch(participant.role) {
-            case 'captain':
-                document.getElementById('captain-zone').appendChild(card);
-                break;
-            case 'member':
-                document.getElementById('paddlers-zone').appendChild(card);
-                break;
-            case 'coxswain':
-                document.getElementById('coxswain-zone').appendChild(card);
-                break;
-            case 'drummer':
-                document.getElementById('drummer-zone').appendChild(card);
-                break;
-            case 'reserve':
-                document.getElementById('reserves-zone').appendChild(card);
-                break;
+        if (teamData.isDragonTeam) {
+            // Для драконов - все роли
+            switch(participant.role) {
+                case 'captain':
+                    document.getElementById('captain-zone').appendChild(card);
+                    break;
+                case 'member':
+                    document.getElementById('paddlers-zone').appendChild(card);
+                    break;
+                case 'coxswain':
+                    document.getElementById('coxswain-zone').appendChild(card);
+                    break;
+                case 'drummer':
+                    document.getElementById('drummer-zone').appendChild(card);
+                    break;
+                case 'reserve':
+                    document.getElementById('reserves-zone').appendChild(card);
+                    break;
+                default:
+                    document.getElementById('paddlers-zone').appendChild(card);
+            }
+        } else {
+            // Для остальных лодок - только гребцы
+            document.getElementById('paddlers-zone').appendChild(card);
         }
     });
     
@@ -345,6 +473,9 @@ function createParticipantCard(participant) {
         'reserve': 'warning'
     };
     
+    // Для не-драконов все участники считаются гребцами
+    const displayRole = teamData.isDragonTeam ? participant.role : 'member';
+    
     card.innerHTML = `
         <div class="card-body py-2">
             <div class="d-flex justify-content-between align-items-center">
@@ -353,8 +484,8 @@ function createParticipantCard(participant) {
                     <br><small class="text-muted">${participant.email}</small>
                 </div>
                 <div class="text-end">
-                    <span class="badge bg-${roleColors[participant.role]} role-badge">
-                        ${roleNames[participant.role]}
+                    <span class="badge bg-${roleColors[displayRole]} role-badge">
+                        ${roleNames[displayRole]}
                     </span>
                     <br><small class="text-muted">${participant.telephone || ''}</small>
                 </div>
@@ -431,27 +562,38 @@ function handleDrop(e) {
 }
 
 function getZoneRole(zoneId) {
-    const roleMap = {
-        'captain-zone': 'captain',
-        'paddlers-zone': 'member',
-        'coxswain-zone': 'coxswain',
-        'drummer-zone': 'drummer',
-        'reserves-zone': 'reserve'
-    };
-    return roleMap[zoneId];
+    if (teamData.isDragonTeam) {
+        const roleMap = {
+            'captain-zone': 'captain',
+            'paddlers-zone': 'member',
+            'coxswain-zone': 'coxswain',
+            'drummer-zone': 'drummer',
+            'reserves-zone': 'reserve'
+        };
+        return roleMap[zoneId];
+    } else {
+        // Для не-драконов все участники - гребцы
+        return 'member';
+    }
 }
 
 function canMoveToZone(zone, role) {
-    const limits = {
-        'captain': 1,
-        'coxswain': 1,
-        'drummer': 1,
-        'member': 9,
-        'reserve': 2
-    };
-    
-    const currentCount = zone.querySelectorAll('.participant-card').length;
-    return currentCount < limits[role];
+    if (teamData.isDragonTeam) {
+        const limits = {
+            'captain': 1,
+            'coxswain': 1,
+            'drummer': 1,
+            'member': 9,
+            'reserve': 2
+        };
+        
+        const currentCount = zone.querySelectorAll('.participant-card').length;
+        return currentCount < limits[role];
+    } else {
+        // Для не-драконов проверяем только общее количество
+        const totalParticipants = document.querySelectorAll('.participant-card').length;
+        return totalParticipants <= teamData.maxParticipants;
+    }
 }
 
 function updateParticipantRole(card, newRole) {
@@ -485,8 +627,6 @@ function recordChange(oid, newRole) {
         oid: oid,
         newRole: newRole
     });
-    
-
 }
 
 function saveChanges() {
@@ -495,39 +635,53 @@ function saveChanges() {
         return;
     }
     
-    // Проверяем обязательные роли
-    const requiredRoles = ['captain'];  // Убираем обязательность coxswain и drummer для гибкости
-    const currentRoles = getCurrentRoles();
-    
-    for (let role of requiredRoles) {
-        if (!currentRoles[role] || currentRoles[role].length === 0) {
-            alert(`Отсутствует обязательная роль: ${getRoleName(role)}`);
+    if (teamData.isDragonTeam) {
+        // Проверки для драконов
+        const requiredRoles = ['captain'];
+        const currentRoles = getCurrentRoles();
+        
+        for (let role of requiredRoles) {
+            if (!currentRoles[role] || currentRoles[role].length === 0) {
+                alert(`Отсутствует обязательная роль: ${getRoleName(role)}`);
+                return;
+            }
+            if (currentRoles[role].length > 1) {
+                alert(`Роль ${getRoleName(role)} должна быть только у одного участника`);
+                return;
+            }
+        }
+        
+        // Проверяем минимальное количество гребцов
+        if (!currentRoles['member'] || currentRoles['member'].length < 1) {
+            alert('Недостаточно гребцов. Требуется минимум 1 гребец.');
             return;
         }
-        if (currentRoles[role].length > 1) {
-            alert(`Роль ${getRoleName(role)} должна быть только у одного участника`);
+        
+        // Проверяем общее количество участников (максимум 14 для драконов D-10)
+        const totalParticipants = Object.values(currentRoles).reduce((sum, roleArray) => sum + roleArray.length, 0);
+        if (totalParticipants > 14) {
+            alert(`Максимальное количество участников в команде драконов D-10: 14. Сейчас: ${totalParticipants}`);
             return;
         }
-    }
-    
-    // Проверяем минимальное количество гребцов
-    if (!currentRoles['member'] || currentRoles['member'].length < 1) {
-        alert('Недостаточно гребцов. Требуется минимум 1 гребец.');
-        return;
-    }
-    
-    // Проверяем общее количество участников (максимум 14 для драконов D-10)
-    const totalParticipants = Object.values(currentRoles).reduce((sum, roleArray) => sum + roleArray.length, 0);
-    if (totalParticipants > 14) {
-        alert(`Максимальное количество участников в команде драконов D-10: 14. Сейчас: ${totalParticipants}`);
-        return;
-    }
-    
-    // Проверяем что специальные роли не дублируются
-    const specialRoles = ['captain', 'coxswain', 'drummer'];
-    for (let role of specialRoles) {
-        if (currentRoles[role] && currentRoles[role].length > 1) {
-            alert(`Роль ${getRoleName(role)} должна быть только у одного участника`);
+        
+        // Проверяем что специальные роли не дублируются
+        const specialRoles = ['captain', 'coxswain', 'drummer'];
+        for (let role of specialRoles) {
+            if (currentRoles[role] && currentRoles[role].length > 1) {
+                alert(`Роль ${getRoleName(role)} должна быть только у одного участника`);
+                return;
+            }
+        }
+    } else {
+        // Проверки для остальных лодок
+        const totalParticipants = document.querySelectorAll('.participant-card').length;
+        if (totalParticipants > teamData.maxParticipants) {
+            alert(`Максимальное количество участников для данной лодки: ${teamData.maxParticipants}. Сейчас: ${totalParticipants}`);
+            return;
+        }
+        
+        if (totalParticipants === 0) {
+            alert('Команда должна содержать хотя бы одного участника');
             return;
         }
     }
@@ -631,11 +785,15 @@ function getRoleName(role) {
                     <label for="participantRole" class="form-label">Роль в команде</label>
                     <select class="form-select" id="participantRole">
                         <option value="">Выберите роль</option>
+                        <?php if ($isDragonTeam): ?>
                         <option value="captain">Капитан</option>
                         <option value="member">Гребец</option>
                         <option value="coxswain">Рулевой</option>
                         <option value="drummer">Барабанщик</option>
                         <option value="reserve">Резерв</option>
+                        <?php else: ?>
+                        <option value="member">Гребец</option>
+                        <?php endif; ?>
                     </select>
                 </div>
             </div>
@@ -684,7 +842,8 @@ async function searchParticipants() {
             body: JSON.stringify({
                 search: searchTerm,
                 champn: teamData.champn,
-                excludeTeamId: teamData.teamId
+                excludeTeamId: teamData.teamId,
+                teamClass: teamData.teamClass // Используем класс команды из данных
             })
         });
         
@@ -837,14 +996,19 @@ async function addParticipantToTeam() {
 
 // Получение зоны по роли
 function getZoneByRole(role) {
-    const zoneMap = {
-        'captain': document.getElementById('captain-zone'),
-        'member': document.getElementById('paddlers-zone'),
-        'coxswain': document.getElementById('coxswain-zone'),
-        'drummer': document.getElementById('drummer-zone'),
-        'reserve': document.getElementById('reserves-zone')
-    };
-    return zoneMap[role];
+    if (teamData.isDragonTeam) {
+        const zoneMap = {
+            'captain': document.getElementById('captain-zone'),
+            'member': document.getElementById('paddlers-zone'),
+            'coxswain': document.getElementById('coxswain-zone'),
+            'drummer': document.getElementById('drummer-zone'),
+            'reserve': document.getElementById('reserves-zone')
+        };
+        return zoneMap[role];
+    } else {
+        // Для не-драконов все участники идут в зону гребцов
+        return document.getElementById('paddlers-zone');
+    }
 }
 
 // Функция получения цвета статуса (если не определена)

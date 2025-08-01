@@ -128,7 +128,9 @@ try {
         $groupedParticipants = [];
         
         foreach ($ageGroups as $ageGroup) {
-            $groupedParticipants[$ageGroup['name']] = [];
+            // Используем полное название возрастной группы с названием и возрастным диапазоном
+            $ageGroupFullName = isset($ageGroup['full_name']) ? $ageGroup['full_name'] : $ageGroup['name'];
+            $groupedParticipants[$ageGroupFullName] = [];
         }
         
         foreach ($participants as $participant) {
@@ -138,7 +140,8 @@ try {
             // Ищем подходящую возрастную группу
             foreach ($ageGroups as $ageGroup) {
                 if ($age >= $ageGroup['min_age'] && $age <= $ageGroup['max_age']) {
-                    $assignedGroup = $ageGroup['name'];
+                    // Используем полное название возрастной группы с названием и возрастным диапазоном
+                    $assignedGroup = isset($ageGroup['full_name']) ? $ageGroup['full_name'] : $ageGroup['name'];
                     break;
                 }
             }
@@ -148,15 +151,16 @@ try {
             } else {
                 // Если группа не найдена, добавляем в первую доступную
                 if (!empty($ageGroups)) {
-                    $firstGroup = $ageGroups[0]['name'];
-                    $groupedParticipants[$firstGroup][] = $participant;
+                    $firstGroupFullName = isset($ageGroups[0]['full_name']) ? $ageGroups[0]['full_name'] : $ageGroups[0]['name'];
+                    $groupedParticipants[$firstGroupFullName][] = $participant;
                 }
             }
         }
         
         // Создаем протоколы для каждой возрастной группы
         foreach ($ageGroups as $ageGroup) {
-            $ageGroupName = $ageGroup['name'];
+            // Используем полное название возрастной группы с названием и возрастным диапазоном
+            $ageGroupName = isset($ageGroup['full_name']) ? $ageGroup['full_name'] : $ageGroup['name'];
             $ageGroupParticipants = $groupedParticipants[$ageGroupName] ?? [];
             
             if (empty($ageGroupParticipants)) {

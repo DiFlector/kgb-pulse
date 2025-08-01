@@ -1,35 +1,81 @@
 <?php
-require_once '../includes/header.php';
-require_once '../../php/db/Database.php';
+session_start();
 
-// Проверка прав доступа
+// Проверка авторизации
 if (!isset($_SESSION['user_id']) || ($_SESSION['user_role'] !== 'Secretary' && $_SESSION['user_role'] !== 'SuperUser' && $_SESSION['user_role'] !== 'Admin')) {
     header('Location: /lks/login.php');
-    exit();
+    exit;
 }
+
+require_once __DIR__ . '/../../php/db/Database.php';
+
+$db = Database::getInstance();
+$user = [
+    'userid' => $_SESSION['user_id'],
+    'fio' => $_SESSION['user_name'] ?? 'Пользователь',
+    'role' => $_SESSION['user_role']
+];
 
 // Получаем данные из сессии
 $selectedEvent = $_SESSION['selected_event'] ?? null;
 
 if (!$selectedEvent) {
-    echo '<div class="alert alert-danger">Данные мероприятия не найдены. Вернитесь к списку мероприятий.</div>';
-    echo '<a href="main.php" class="btn btn-primary">Вернуться к списку мероприятий</a>';
-    exit();
+    // Настройки страницы для ошибки
+    $pageTitle = 'Ошибка';
+    $pageHeader = '';
+    $showBreadcrumb = false;
+
+    include __DIR__ . '/../includes/header.php';
+    ?>
+    <div class="container-fluid">
+        <div class="alert alert-danger">
+            <h5><i class="fas fa-exclamation-triangle me-2"></i>Данные мероприятия не найдены</h5>
+            <p>Вернитесь к списку мероприятий для выбора нужного события.</p>
+        </div>
+        <a href="main.php" class="btn btn-primary">
+            <i class="fas fa-arrow-left me-2"></i>Вернуться к списку мероприятий
+        </a>
+    </div>
+    <?php
+    include __DIR__ . '/../includes/footer.php';
+    exit;
 }
 
 $meroId = $selectedEvent['id'];
 
 // Получаем информацию о мероприятии
-$db = Database::getInstance();
 $stmt = $db->prepare("SELECT * FROM meros WHERE champn = ?");
 $stmt->execute([$meroId]);
 $mero = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$mero) {
-    echo '<div class="alert alert-danger">Мероприятие не найдено</div>';
-    echo '<a href="main.php" class="btn btn-primary">Вернуться к списку мероприятий</a>';
-    exit();
+    // Настройки страницы для ошибки
+    $pageTitle = 'Ошибка';
+    $pageHeader = '';
+    $showBreadcrumb = false;
+
+    include __DIR__ . '/../includes/header.php';
+    ?>
+    <div class="container-fluid">
+        <div class="alert alert-danger">
+            <h5><i class="fas fa-exclamation-triangle me-2"></i>Мероприятие не найдено</h5>
+            <p>Запрашиваемое мероприятие не существует в базе данных.</p>
+        </div>
+        <a href="main.php" class="btn btn-primary">
+            <i class="fas fa-arrow-left me-2"></i>Вернуться к списку мероприятий
+        </a>
+    </div>
+    <?php
+    include __DIR__ . '/../includes/footer.php';
+    exit;
 }
+
+// Настройки страницы
+$pageTitle = htmlspecialchars($mero['meroname']);
+$pageHeader = '';
+$showBreadcrumb = false;
+
+include __DIR__ . '/../includes/header.php';
 ?>
 
 <div class="container-fluid">
@@ -169,4 +215,4 @@ if (!$mero) {
 <!-- Подключаем скрипты -->
 <script src="/lks/js/secretary/results.js"></script>
 
-<?php require_once '../includes/footer.php'; ?> 
+<?php include __DIR__ . '/../includes/footer.php'; ?> 

@@ -145,7 +145,9 @@ class ProtocolManager {
         // Инициализируем группы с правильными названиями (с префиксом пола)
         foreach ($ageGroups as $ageGroup) {
             $genderPrefix = $sex === 'М' ? 'Мужчины' : 'Женщины';
-            $fullGroupName = "$genderPrefix ({$ageGroup['name']})";
+            // Используем полное название возрастной группы с названием и возрастным диапазоном
+            $ageGroupFullName = isset($ageGroup['full_name']) ? $ageGroup['full_name'] : $ageGroup['name'];
+            $fullGroupName = "$genderPrefix ({$ageGroupFullName})";
             $grouped[$fullGroupName] = [];
         }
         
@@ -157,7 +159,9 @@ class ProtocolManager {
             foreach ($ageGroups as $ageGroup) {
                 if ($age >= $ageGroup['min_age'] && $age <= $ageGroup['max_age']) {
                     $genderPrefix = $sex === 'М' ? 'Мужчины' : 'Женщины';
-                    $assignedGroup = "$genderPrefix ({$ageGroup['name']})";
+                    // Используем полное название возрастной группы с названием и возрастным диапазоном
+                    $ageGroupFullName = isset($ageGroup['full_name']) ? $ageGroup['full_name'] : $ageGroup['name'];
+                    $assignedGroup = "$genderPrefix ({$ageGroupFullName})";
                     break;
                 }
             }
@@ -165,7 +169,9 @@ class ProtocolManager {
             // Если группа не найдена, добавляем в первую доступную
             if (!$assignedGroup && !empty($ageGroups)) {
                 $genderPrefix = $sex === 'М' ? 'Мужчины' : 'Женщины';
-                $assignedGroup = "$genderPrefix ({$ageGroups[0]['name']})";
+                // Используем полное название возрастной группы с названием и возрастным диапазоном
+                $ageGroupFullName = isset($ageGroups[0]['full_name']) ? $ageGroups[0]['full_name'] : $ageGroups[0]['name'];
+                $assignedGroup = "$genderPrefix ({$ageGroupFullName})";
             }
             
             if ($assignedGroup && isset($grouped[$assignedGroup])) {

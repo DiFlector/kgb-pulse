@@ -43,6 +43,10 @@ class SecretaryEventManager {
         $classDistance = json_decode($this->eventData['class_distance'], true);
         $disciplines = [];
         
+        if (!$classDistance) {
+            return $disciplines;
+        }
+        
         foreach ($classDistance as $class => $classData) {
             if (!isset($classData['sex']) || !isset($classData['dist']) || !isset($classData['age_group'])) {
                 continue;
@@ -100,8 +104,9 @@ class SecretaryEventManager {
         
         $classPattern = '%"' . $class . '"%';
         $stmt->execute([$this->meroOid, $classPattern, $sex]);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
         
-        return $stmt->fetch(PDO::FETCH_ASSOC)['count'];
+        return $result['count'];
     }
     
     /**

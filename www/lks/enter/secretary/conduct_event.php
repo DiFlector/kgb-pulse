@@ -169,6 +169,16 @@ $_SESSION['selected_event'] = [
                         <i class="bi bi-file-earmark-text"></i> Создать протоколы
                     </button>
                 </div>
+                
+                <!-- Тестовая кнопка для отладки -->
+                <div class="mt-3" id="debug-controls">
+                    <button class="btn btn-warning" onclick="testShowControls()">
+                        <i class="bi bi-bug"></i> Тест: Показать кнопки
+                    </button>
+                    <button class="btn btn-info" onclick="testCheckDisciplines()">
+                        <i class="bi bi-info-circle"></i> Проверить дисциплины
+                    </button>
+                </div>
             </div>
 
             <!-- Протоколы -->
@@ -217,13 +227,20 @@ $_SESSION['selected_event'] = [
 
         // Загрузка дисциплин при загрузке страницы
         $(document).ready(function() {
+            console.log('Страница загружена, начинаем загрузку дисциплин...');
             loadDisciplines();
+            
+            // Тест: показываем кнопку принудительно
+            setTimeout(function() {
+                console.log('Тест: принудительно показываем кнопки управления');
+                $('#draw-controls').show();
+            }, 3000);
         });
 
         // Загрузка доступных дисциплин
         function loadDisciplines() {
             $.ajax({
-                url: '/lks/php/secretary/conduct_draw_api.php?action=get_disciplines',
+                url: '/lks/php/secretary/get_disciplines_simple.php',
                 method: 'POST',
                 data: JSON.stringify({
                     mero_id: <?php echo $meroId; ?>
@@ -233,7 +250,8 @@ $_SESSION['selected_event'] = [
                     if (response.success) {
                         displayDisciplines(response.disciplines);
                     } else {
-                        showError('Ошибка загрузки дисциплин: ' + response.message);
+                        const errorMessage = response.message || 'Неизвестная ошибка';
+                        showError('Ошибка загрузки дисциплин: ' + errorMessage);
                     }
                 },
                 error: function() {
@@ -275,32 +293,109 @@ $_SESSION['selected_event'] = [
             
             container.html(html);
             
-            // Обработчики для чекбоксов
-            $('.discipline-checkbox').change(function() {
+            // Обработчики для чекбоксов (используем делегирование событий)
+            $(document).on('change', '.discipline-checkbox', function() {
+                console.log('Чекбокс изменен:', $(this).val(), 'checked:', $(this).is(':checked'));
                 updateSelectedDisciplines();
             });
+            
+            // Проверяем состояние после загрузки
+            console.log('Дисциплины загружены, проверяем состояние...');
+            updateSelectedDisciplines();
+            
+            // Принудительно обновляем состояние через небольшую задержку
+            setTimeout(function() {
+                console.log('Принудительное обновление состояния...');
+                updateSelectedDisciplines();
+            }, 100);
         }
 
+        // Тестовые функции для отладки
+        function testShowControls() {
+            console.log('Тест: принудительно показываем кнопки управления');
+            $('#draw-controls').show();
+            alert('Кнопки управления должны быть видны!');
+        }
+        
+        function testCheckDisciplines() {
+            console.log('Проверяем выбранные дисциплины...');
+            console.log('Всего чекбоксов:', $('.discipline-checkbox').length);
+            console.log('Отмеченных чекбоксов:', $('.discipline-checkbox:checked').length);
+            console.log('selectedDisciplines:', selectedDisciplines);
+            
+            // Принудительно обновляем состояние
+            updateSelectedDisciplines();
+            console.log('После принудительного обновления:');
+            console.log('selectedDisciplines:', selectedDisciplines);
+            console.log('Длина массива:', selectedDisciplines.length);
+            
+            alert('Проверьте консоль браузера для деталей');
+        }
+        
         // Обновление выбранных дисциплин
         function updateSelectedDisciplines() {
             selectedDisciplines = [];
-            $('.discipline-checkbox:checked').each(function() {
+            console.log('Начинаем обновление выбранных дисциплин...');
+            console.log('Найдено отмеченных чекбоксов:', $('.discipline-checkbox:checked').length);
+            
+            $('.discipline-checkbox:checked').each(function(index) {
                 const disciplineKey = $(this).val();
+                console.log('Обрабатываем чекбокс', index + 1, ':', disciplineKey);
+                
                 const disciplineCard = $(this).closest('.discipline-card');
-                const disciplineData = JSON.parse(disciplineCard.data('discipline'));
-                selectedDisciplines.push(disciplineData);
+                console.log('Найден discipline-card:', disciplineCard.length > 0);
+                
+                const disciplineDataRaw = disciplineCard.data('discipline');
+                console.log('Данные дисциплины (raw):', disciplineDataRaw);
+                
+                if (disciplineDataRaw) {
+                    try {
+                        const disciplineData = JSON.parse(disciplineDataRaw);
+                        console.log('Данные дисциплины (parsed):', disciplineData);
+                        selectedDisciplines.push(disciplineData);
+                    } catch (e) {
+                        console.error('Ошибка парсинга JSON:', e);
+                    }
+                } else {
+                    console.error('Данные дисциплины не найдены в data-атрибуте');
+                }
             });
             
+            console.log('Выбранные дисциплины:', selectedDisciplines);
+            console.log('Количество выбранных дисциплин:', selectedDisciplines.length);
+            
             if (selectedDisciplines.length > 0) {
-                $('#draw-controls').show();
+                console.log('Показываем кнопки управления');
+                const drawControls = $('#draw-controls');
+                if (drawControls.length > 0) {
+                    drawControls.show();
+                } else {
+                    console.error('Элемент #draw-controls не найден!');
+                }
             } else {
-                $('#draw-controls').hide();
+                console.log('Скрываем кнопки управления');
+                const drawControls = $('#draw-controls');
+                if (drawControls.length > 0) {
+                    drawControls.hide();
+                } else {
+                    console.error('Элемент #draw-controls не найден!');
+                }
             }
         }
 
         // Проведение жеребьевки
         $('#conduct-draw-btn').click(function() {
+            console.log('Кнопка "Провести жеребьевку" нажата');
+            
+            // Принудительно обновляем выбранные дисциплины перед проверкой
+            updateSelectedDisciplines();
+            
+            console.log('selectedDisciplines после обновления:', selectedDisciplines);
+            console.log('Длина массива:', selectedDisciplines.length);
+            console.log('Отмеченные чекбоксы:', $('.discipline-checkbox:checked').length);
+            
             if (selectedDisciplines.length === 0) {
+                console.log('Ошибка: массив selectedDisciplines пуст');
                 showError('Выберите хотя бы одну дисциплину');
                 return;
             }
@@ -321,7 +416,8 @@ $_SESSION['selected_event'] = [
                         $('#create-protocols-btn').show();
                         loadProtocols();
                     } else {
-                        showError('Ошибка проведения жеребьевки: ' + response.message);
+                        const errorMessage = response.message || 'Неизвестная ошибка';
+                        showError('Ошибка проведения жеребьевки: ' + errorMessage);
                     }
                 },
                 error: function() {
@@ -349,7 +445,8 @@ $_SESSION['selected_event'] = [
                         showSuccess('Протоколы созданы успешно!');
                         loadProtocols();
                     } else {
-                        showError('Ошибка создания протоколов: ' + response.message);
+                        const errorMessage = response.message || 'Неизвестная ошибка';
+                        showError('Ошибка создания протоколов: ' + errorMessage);
                     }
                 },
                 error: function() {
@@ -376,7 +473,8 @@ $_SESSION['selected_event'] = [
                         displayProtocols(response.protocols);
                         $('#protocols-panel').show();
                     } else {
-                        showError('Ошибка загрузки протоколов: ' + response.message);
+                        const errorMessage = response.message || 'Неизвестная ошибка';
+                        showError('Ошибка загрузки протоколов: ' + errorMessage);
                     }
                 },
                 error: function() {
@@ -564,7 +662,8 @@ $_SESSION['selected_event'] = [
                         $('#resultsModal').modal('hide');
                         loadProtocols(); // Перезагружаем протоколы
                     } else {
-                        showError('Ошибка сохранения результатов: ' + response.message);
+                        const errorMessage = response.message || 'Неизвестная ошибка';
+                        showError('Ошибка сохранения результатов: ' + errorMessage);
                     }
                 },
                 error: function() {
@@ -575,16 +674,105 @@ $_SESSION['selected_event'] = [
 
         // Вспомогательные функции для уведомлений
         function showSuccess(message) {
-            // Здесь можно добавить красивые уведомления
-            alert('Успех: ' + message);
+            // Создаем модальное окно для успеха
+            const modalHtml = `
+                <div class="modal fade" id="successModal" tabindex="-1" role="dialog">
+                    <div class="modal-dialog" role="document">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">
+                                    <i class="bi bi-check-circle text-success"></i> Успех
+                                </h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p>${message}</p>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-success" data-bs-dismiss="modal">OK</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Удаляем предыдущее модальное окно, если оно есть
+            $('#successModal').remove();
+            
+            // Добавляем новое модальное окно
+            $('body').append(modalHtml);
+            
+            // Показываем модальное окно
+            const modal = new bootstrap.Modal(document.getElementById('successModal'));
+            modal.show();
         }
 
         function showError(message) {
-            alert('Ошибка: ' + message);
+            // Создаем модальное окно для ошибки
+            const modalHtml = `
+                <div class="modal fade" id="errorModal" tabindex="-1" role="dialog">
+                    <div class="modal-dialog" role="document">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">
+                                    <i class="bi bi-exclamation-triangle text-danger"></i> Ошибка
+                                </h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p>${message}</p>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">OK</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Удаляем предыдущее модальное окно, если оно есть
+            $('#errorModal').remove();
+            
+            // Добавляем новое модальное окно
+            $('body').append(modalHtml);
+            
+            // Показываем модальное окно
+            const modal = new bootstrap.Modal(document.getElementById('errorModal'));
+            modal.show();
         }
 
         function showInfo(message) {
-            alert('Информация: ' + message);
+            // Создаем модальное окно для информации
+            const modalHtml = `
+                <div class="modal fade" id="infoModal" tabindex="-1" role="dialog">
+                    <div class="modal-dialog" role="document">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">
+                                    <i class="bi bi-info-circle text-info"></i> Информация
+                                </h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p>${message}</p>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-info" data-bs-dismiss="modal">OK</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Удаляем предыдущее модальное окно, если оно есть
+            $('#infoModal').remove();
+            
+            // Добавляем новое модальное окно
+            $('body').append(modalHtml);
+            
+            // Показываем модальное окно
+            const modal = new bootstrap.Modal(document.getElementById('infoModal'));
+            modal.show();
         }
     </script>
 </body>

@@ -5,33 +5,21 @@
 
 // Проверка авторизации
 session_start();
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
 
-echo 'PHP OK<br>';
+if (!isset($_SESSION['user_id'])) {
+    header('Location: /lks/login.php');
+    exit;
+}
 
 require_once __DIR__ . '/../../php/helpers.php';
-echo 'helpers.php OK<br>';
-
 require_once __DIR__ . '/../../php/db/Database.php';
-echo 'Database.php OK<br>';
-
-try {
-    $db = Database::getInstance();
-    echo 'Database connect OK<br>';
-    $stmt = $db->prepare('SELECT 1');
-    $stmt->execute();
-    echo 'SQL OK<br>';
-} catch (Exception $e) {
-    echo 'DB ERROR: ' . $e->getMessage();
-}
 
 $userId = $_SESSION['user_id'];
 $userRole = $_SESSION['user_role'];
 
 // Получаем данные пользователя
 try {
+    $db = Database::getInstance();
     $userStmt = $db->prepare("SELECT * FROM users WHERE userid = ?");
     $userStmt->execute([$userId]);
     $user = $userStmt->fetch(PDO::FETCH_ASSOC);
@@ -54,22 +42,6 @@ try {
     ");
     $events = $eventsStmt->fetchAll();
     
-    // Отладка: логируем количество найденных мероприятий
-    error_log("DEBUG: Найдено мероприятий: " . count($events));
-    if (empty($events)) {
-        error_log("DEBUG: Мероприятия не найдены. Проверяем таблицу meros...");
-        
-        // Проверяем что есть в таблице meros
-        $checkStmt = $db->query("SELECT COUNT(*) as total FROM meros");
-        $totalEvents = $checkStmt->fetch(PDO::FETCH_ASSOC)['total'];
-        error_log("DEBUG: Всего мероприятий в БД: " . $totalEvents);
-        
-        // Проверяем статусы
-        $statusStmt = $db->query("SELECT DISTINCT status FROM meros");
-        $statuses = $statusStmt->fetchAll(PDO::FETCH_COLUMN);
-        error_log("DEBUG: Доступные статусы: " . implode(', ', $statuses));
-    }
-
     // Получаем oid пользователя
     $userOidStmt = $db->prepare("SELECT oid FROM users WHERE userid = ?");
     $userOidStmt->execute([$userId]);
@@ -91,7 +63,16 @@ try {
     $userRegistrations = [];
 }
 
-include '../includes/header.php';
+// Настройки страницы
+$pageTitle = 'Календарь соревнований';
+$pageHeader = 'Календарь соревнований';
+$showBreadcrumb = true;
+$breadcrumb = [
+    ['href' => '/lks/enter/user/', 'title' => 'Спортсмен'],
+    ['href' => '#', 'title' => 'Календарь соревнований']
+];
+
+include __DIR__ . '/../includes/header.php';
 ?>
 
 <!-- Добавляем стили для модального окна регистрации -->
@@ -628,5 +609,5 @@ function getStatusText($status) {
     }
 }
 
-include '../includes/footer.php';
+include __DIR__ . '/../includes/footer.php';
 ?> 

@@ -632,7 +632,7 @@ try {
                     }
                     
                 } else {
-                    // Групповая лодка - отдельная запись для каждой дистанции + команда, статус "Ожидание команды"
+                    // Групповая лодка - отдельная запись для каждой дистанции + отдельная команда для каждого участника
                     foreach ($distances as $distance) {
                         // Проверяем, нет ли уже регистрации этого пользователя на эту дистанцию
                         $existingUserReg = $db->fetchOne("
@@ -649,49 +649,25 @@ try {
                             continue;
                         }
                         
-                        // Проверяем существующую команду для этого класса и дистанции
-                        $existingTeam = $db->fetchOne("
-                            SELECT lr.teams_oid, t.persons_amount, t.persons_all
-                            FROM listreg lr
-                            JOIN teams t ON lr.teams_oid = t.oid  
-                            WHERE lr.meros_oid = ? 
-                            AND lr.discipline::text LIKE ? 
-                            AND lr.discipline::text LIKE ?
-                            AND t.persons_amount < t.persons_all
-                            ORDER BY lr.teams_oid ASC
-                            LIMIT 1
-                        ", [$eventId, '%"' . $boatClass . '"%', '%"' . $distance . '"%']);
+                        // Создаем отдельную команду для каждого участника
+                        $boatCapacity = getBoatCapacity($boatClass);
+                        $teamName = $boatClass . " " . $distance . "м - " . $fio;
                         
-                        $teamOid = null;
+                        // Генерируем новый teamid
+                        $maxTeamId = $db->query("SELECT COALESCE(MAX(teamid), 0) FROM teams")->fetchColumn();
+                        $newTeamId = $maxTeamId + 1;
                         
-                        if ($existingTeam) {
-                            // Добавляем к существующей команде
-                            $teamOid = $existingTeam['teams_oid'];
-                            
-                            // Обновляем количество участников
-                            $db->execute("
-                                UPDATE teams 
-                                SET persons_amount = persons_amount + 1 
-                                WHERE oid = ?
-                            ", [$teamOid]);
-                            
-                        } else {
-                            // Создаем новую команду
-                            $boatCapacity = getBoatCapacity($boatClass);
-                            $teamName = $boatClass . " " . $distance . "м - Команда";
-                            
-                            $insertTeam = "
-                                INSERT INTO teams (teamname, teamcity, persons_amount, persons_all, class)
-                                VALUES (?, ?, ?, ?, ?)
-                            ";
-                            
-                            $db->execute($insertTeam, [
-                                $teamName, $city ?: $country, 1, $boatCapacity, $boatClass
-                            ]);
-                            
-                            $teamOid = $db->lastInsertId();
-                            $stats['new_teams']++;
-                        }
+                        $insertTeam = "
+                            INSERT INTO teams (teamid, teamname, teamcity, persons_amount, persons_all, class)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        ";
+                        
+                        $db->execute($insertTeam, [
+                            $newTeamId, $teamName, $city ?: $country, 1, $boatCapacity, $boatClass
+                        ]);
+                        
+                        $teamOid = $db->lastInsertId();
+                        $stats['new_teams']++;
                         
                         // Создаем регистрацию с привязкой к команде
                         $disciplineData = [
