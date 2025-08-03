@@ -77,7 +77,7 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
     <title>Протоколы - <?php echo htmlspecialchars($event['meroname']); ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="/lks/css/style.css" rel="stylesheet">
+    <link href="/lks/css/style.css?v=<?php echo time(); ?>" rel="stylesheet">
     <style>
         .protocols-container {
             padding: 20px;
@@ -230,6 +230,72 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
             padding: 20px;
             margin-bottom: 20px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        /* Стили для уменьшения промежутка между кнопками */
+        .btn-group {
+            display: flex !important;
+            gap: 8px !important;
+            justify-content: flex-end !important;
+        }
+        
+        .btn-group .btn {
+            margin: 0 !important;
+            flex-shrink: 0 !important;
+            /* Увеличиваем кнопки в 1.2 раза */
+            max-width: 240px !important;
+            min-width: 240px !important;
+            width: auto !important;
+            padding: 10px 14px !important;
+            font-size: 1.02rem !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+        }
+        
+        /* Уменьшаем промежуток между группами кнопок */
+        .btn-group + .btn-group {
+            margin-top: 8px !important;
+        }
+        
+        /* Дополнительные стили для компактности */
+        .btn-group .btn i {
+            font-size: 0.8rem !important;
+            margin-right: 4px !important;
+        }
+        
+        /* Принудительное уменьшение размера кнопок */
+        .event-info-panel .btn-group .btn {
+            max-width: 192px !important;
+            min-width: 144px !important;
+            padding: 7px 12px !important;
+            font-size: 0.96rem !important;
+        }
+        
+        /* Специальный класс для компактных кнопок */
+        .compact-btn {
+            max-width: 180px !important;
+            min-width: 120px !important;
+            padding: 7px 10px !important;
+            font-size: 0.9rem !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+        }
+        
+        .compact-btn i {
+            font-size: 0.84rem !important;
+            margin-right: 4px !important;
+        }
+        
+        /* Адаптивность для мобильных устройств */
+        @media (max-width: 768px) {
+            .btn-group .btn {
+                max-width: 168px !important;
+                min-width: 120px !important;
+                font-size: 0.9rem !important;
+                padding: 6px 10px !important;
+            }
         }
         .protocol-panel {
             background: white;
@@ -562,22 +628,22 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
                 <div class="col-md-6 text-end">
                     <p><strong>Статус:</strong> <?php echo htmlspecialchars($event['status']); ?></p>
                     <p><strong>Участников:</strong> <?php echo $participantsCount; ?></p>
-                    <div class="btn-group mt-2" role="group">
-                        <a href="select-disciplines.php" class="btn btn-outline-secondary">
-                            <i class="bi bi-arrow-left me-1"></i>Назад к выбору дисциплин
-                        </a>
-                        <button type="button" class="btn btn-primary" id="conduct-draw-btn">
-                            <i class="fas fa-random"></i> Жеребьевка
-                        </button>
-                    </div>
-                    <div class="btn-group mt-2" role="group">
-                        <button type="button" class="btn btn-outline-success" id="download-start-protocols-btn">
-                            <i class="fas fa-download"></i> Скачать стартовые
-                        </button>
-                        <button type="button" class="btn btn-outline-info" id="download-finish-protocols-btn">
-                            <i class="fas fa-download"></i> Скачать финишные
-                        </button>
-                    </div>
+                                         <div class="btn-group mt-2" role="group" style="display: flex !important; gap: 8px !important; justify-content: flex-end !important;">
+                         <a href="select-disciplines.php" class="btn btn-outline-secondary compact-btn" style="max-width: 280px !important; min-width: 280px !important; padding: 8px 14px !important; font-size: 1.02rem !important; white-space: normal !important; overflow: visible !important; text-overflow: clip !important; height: auto !important; line-height: 1.2 !important;">
+                             <i class="bi bi-arrow-left me-1"></i>Назад к выбору дисциплин
+                         </a>
+                         <button type="button" class="btn btn-primary compact-btn" id="conduct-draw-btn" style="max-width: 200px !important; min-width: 200px !important; padding: 8px 14px !important; font-size: 1.02rem !important; height: auto !important; line-height: 1.2 !important;">
+                             <i class="fas fa-random"></i> Жеребьевка
+                         </button>
+                     </div>
+                     <div class="btn-group mt-2" role="group" style="display: flex !important; gap: 8px !important; justify-content: flex-end !important;">
+                         <button type="button" class="btn btn-outline-success compact-btn" id="download-start-protocols-btn" style="max-width: 240px !important; min-width: 240px !important; padding: 8px 14px !important; font-size: 1.02rem !important; height: auto !important; line-height: 1.2 !important;">
+                             <i class="fas fa-download"></i> Скачать стартовые
+                         </button>
+                         <button type="button" class="btn btn-outline-info compact-btn" id="download-finish-protocols-btn" style="max-width: 240px !important; min-width: 240px !important; padding: 8px 14px !important; font-size: 1.02rem !important; height: auto !important; line-height: 1.2 !important;">
+                             <i class="fas fa-download"></i> Скачать финишные
+                         </button>
+                     </div>
                 </div>
             </div>
         </div>
