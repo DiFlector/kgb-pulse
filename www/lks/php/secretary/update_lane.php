@@ -110,6 +110,7 @@ try {
                 foreach ($ageGroup['participants'] as &$participant) {
                     if ($participant['userId'] == $userId) {
                         $participant['lane'] = (int)$newLane;
+                        $participant['water'] = (int)$newLane; // Добавляем обновление поля "вода"
                         $participant['laneModified'] = true;
                         $participant['laneModifiedAt'] = date('Y-m-d H:i:s');
                         $laneUpdated = true;

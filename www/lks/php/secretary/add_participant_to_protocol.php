@@ -78,16 +78,38 @@ try {
                     }
                 }
                 
+                // Определяем максимальное количество дорожек для типа лодки
+                $maxLanes = getMaxLanesForBoat($protocol['discipline']);
+                
+                // Находим свободную дорожку
+                $usedLanes = [];
+                foreach ($ageGroup['participants'] as $existingParticipant) {
+                    if (isset($existingParticipant['lane']) && $existingParticipant['lane'] !== null) {
+                        $usedLanes[] = $existingParticipant['lane'];
+                    }
+                }
+                
+                // Назначаем первую свободную дорожку
+                $assignedLane = 1;
+                for ($lane = 1; $lane <= $maxLanes; $lane++) {
+                    if (!in_array($lane, $usedLanes)) {
+                        $assignedLane = $lane;
+                        break;
+                    }
+                }
+                
                 // Добавляем участника
                 $ageGroup['participants'][] = [
                     'userId' => $participant['userid'],
+                    'userid' => $participant['userid'], // Добавляем дублирующее поле для совместимости
                     'fio' => $participant['fio'],
                     'sex' => $participant['sex'],
                     'birthdata' => $participant['birthdata'],
                     'sportzvanie' => $participant['sportzvanie'],
                     'teamName' => $participant['teamname'] ?? '',
                     'teamCity' => $participant['teamcity'] ?? '',
-                    'lane' => null,
+                    'lane' => $assignedLane,
+                    'water' => $assignedLane, // Добавляем поле "вода" для совместимости
                     'place' => null,
                     'finishTime' => null,
                     'addedManually' => true,
@@ -139,5 +161,26 @@ try {
     
 } catch (Exception $e) {
     echo json_encode(['success' => false, 'message' => 'Ошибка добавления участника: ' . $e->getMessage()]);
+}
+
+/**
+ * Определение максимального количества дорожек для типа лодки
+ */
+function getMaxLanesForBoat($boatClass) {
+    switch ($boatClass) {
+        case 'D-10':
+            return 6; // Драконы - 6 дорожек
+        case 'K-1':
+        case 'C-1':
+            return 9; // Одиночные - 9 дорожек
+        case 'K-2':
+        case 'C-2':
+            return 9; // Двойки - 9 дорожек
+        case 'K-4':
+        case 'C-4':
+            return 9; // Четверки - 9 дорожек
+        default:
+            return 9; // По умолчанию 9 дорожек
+    }
 }
 ?> 

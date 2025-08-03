@@ -1956,10 +1956,12 @@ class ProtocolsManager {
         console.log('fio:', participant.fio);
         console.log('birthdata:', participant.birthdata);
         console.log('sportzvanie:', participant.sportzvanie);
+        console.log('water:', participant.water);
+        console.log('lane:', participant.lane);
         
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td>${participant.lane || '-'}</td>
+            <td>${participant.lane || participant.water || '-'}</td>
             <td>${participant.userId || participant.userid || '-'}</td>
             <td>${participant.fio || '-'}</td>
             <td>${participant.birthYear || participant.birthdata || '-'}</td>

@@ -171,6 +171,9 @@ try {
                         // Получаем участников для этой группы
                         $participants = getParticipantsForGroup($db, $meroId, $boatClass, $sex, $dist, $minAge, $maxAge);
                         
+                        // Автоматически назначаем номера дорожек
+                        $participants = assignLanesToParticipants($participants, $boatClass);
+                        
                         $protocolsData[] = [
                             'meroId' => (int)$meroId,
                             'discipline' => $boatClass,
@@ -291,7 +294,7 @@ function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $min
                         'sportzvanie' => $participant['sportzvanie'],
                         'teamName' => $participant['teamname'] ?? '',
                         'teamCity' => $participant['teamcity'] ?? '',
-                        'lane' => null,
+                        'lane' => null, // Будет назначен автоматически
                         'place' => null,
                         'finishTime' => null,
                         'addedManually' => false,
@@ -311,5 +314,50 @@ function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $min
     error_log("Отфильтровано участников для группы {$boatClass}_{$sex}_{$distance}_{$minAge}-{$maxAge}: " . count($filteredParticipants));
     
     return $filteredParticipants;
+}
+
+/**
+ * Автоматическое назначение номеров дорожек участникам
+ */
+function assignLanesToParticipants($participants, $boatClass) {
+    if (empty($participants)) {
+        return $participants;
+    }
+    
+    // Определяем максимальное количество дорожек для типа лодки
+    $maxLanes = getMaxLanesForBoat($boatClass);
+    
+    // Перемешиваем участников для случайного распределения
+    shuffle($participants);
+    
+    // Назначаем номера дорожек
+    foreach ($participants as $index => &$participant) {
+        $lane = ($index % $maxLanes) + 1;
+        $participant['lane'] = $lane;
+        $participant['water'] = $lane; // Добавляем поле "вода" для совместимости
+    }
+    
+    return $participants;
+}
+
+/**
+ * Определение максимального количества дорожек для типа лодки
+ */
+function getMaxLanesForBoat($boatClass) {
+    switch ($boatClass) {
+        case 'D-10':
+            return 6; // Драконы - 6 дорожек
+        case 'K-1':
+        case 'C-1':
+            return 9; // Одиночные - 9 дорожек
+        case 'K-2':
+        case 'C-2':
+            return 9; // Двойки - 9 дорожек
+        case 'K-4':
+        case 'C-4':
+            return 9; // Четверки - 9 дорожек
+        default:
+            return 9; // По умолчанию 9 дорожек
+    }
 }
 ?> 
