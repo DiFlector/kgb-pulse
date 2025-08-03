@@ -24,8 +24,6 @@ if (!defined('TEST_MODE')) {
 if (!defined('TEST_MODE')) header('Content-Type: application/json; charset=utf-8');
 
 try {
-    error_log("🔄 [LOAD_PROTOCOLS_DATA] Запрос на загрузку данных протоколов");
-    
     // Получаем данные из POST запроса
     if (defined('TEST_MODE')) {
         $data = $_POST;
@@ -50,8 +48,7 @@ try {
         throw new Exception('Неверный ID мероприятия');
     }
     
-    error_log("🔄 [LOAD_PROTOCOLS_DATA] Загрузка данных протоколов для мероприятия $meroId");
-    error_log("🔄 [LOAD_PROTOCOLS_DATA] Выбранные дисциплины: " . json_encode($selectedDisciplines));
+    error_log("🔄 [LOAD_PROTOCOLS_DATA] Загрузка протоколов для мероприятия $meroId");
     
     // Получаем данные мероприятия
     $db = Database::getInstance();
@@ -166,28 +163,33 @@ try {
                         $minAge = (int)$matches[2];
                         $maxAge = (int)$matches[3];
                         
-                        $redisKey = "{$meroId}_{$boatClass}_{$sex}_{$dist}_{$groupName}";
+                        $redisKey = "protocol:{$meroId}:{$boatClass}:{$sex}:{$dist}:{$groupName}";
                         
                         // Получаем участников для этой группы
                         $participants = getParticipantsForGroup($db, $meroId, $boatClass, $sex, $dist, $minAge, $maxAge);
                         
-                        // Автоматически назначаем номера дорожек
-                        $participants = assignLanesToParticipants($participants, $boatClass);
+                        // НЕ назначаем номера дорожек автоматически - жеребьевка должна быть ручной
+                        // $participants = assignLanesToParticipants($participants, $boatClass);
+                        
+                        $ageGroupData = [
+                            'name' => $groupName,
+                            'protocol_number' => count($protocolsData) + 1,
+                            'participants' => $participants,
+                            'redisKey' => $redisKey,
+                            'protected' => false
+                        ];
+                        
+                        // Сохраняем данные в Redis
+                        if ($redis) {
+                            $redis->setex($redisKey, 86400, json_encode($ageGroupData));
+                        }
                         
                         $protocolsData[] = [
                             'meroId' => (int)$meroId,
                             'discipline' => $boatClass,
                             'sex' => $sex,
                             'distance' => $dist,
-                            'ageGroups' => [
-                                [
-                                    'name' => $groupName,
-                                    'protocol_number' => count($protocolsData) + 1,
-                                    'participants' => $participants,
-                                    'redisKey' => $redisKey,
-                                    'protected' => false
-                                ]
-                            ],
+                            'ageGroups' => [$ageGroupData],
                             'created_at' => date('Y-m-d H:i:s')
                         ];
                     }
@@ -196,23 +198,7 @@ try {
         }
     }
     
-    error_log("✅ [LOAD_PROTOCOLS_DATA] Данные протоколов загружены успешно: " . count($protocolsData) . " протоколов");
-    
-    // Добавляем отладочную информацию о первом протоколе
-    if (!empty($protocolsData)) {
-        $firstProtocol = $protocolsData[0];
-        error_log("Первый протокол: " . json_encode($firstProtocol));
-        
-        if (!empty($firstProtocol['ageGroups'])) {
-            $firstAgeGroup = $firstProtocol['ageGroups'][0];
-            error_log("Первая возрастная группа: " . json_encode($firstAgeGroup));
-            
-            if (!empty($firstAgeGroup['participants'])) {
-                $firstParticipant = $firstAgeGroup['participants'][0];
-                error_log("Первый участник: " . json_encode($firstParticipant));
-            }
-        }
-    }
+    error_log("✅ [LOAD_PROTOCOLS_DATA] Загружено протоколов: " . count($protocolsData));
     
     echo json_encode([
         'success' => true,
@@ -254,9 +240,10 @@ function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $min
     $stmt->execute([$meroId, $sex]);
     $participants = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    error_log("Найдено участников для дисциплины {$boatClass}_{$sex}_{$distance}: " . count($participants));
+    error_log("🔍 Поиск участников для группы {$boatClass}_{$sex}_{$distance} (возраст {$minAge}-{$maxAge}): найдено " . count($participants) . " участников");
     
     $filteredParticipants = [];
+    $addedCount = 0;
     
     foreach ($participants as $participant) {
         // Проверяем возраст
@@ -264,10 +251,7 @@ function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $min
         $yearEndDate = new DateTime($yearEnd);
         $age = $yearEndDate->diff($birthDate)->y;
         
-        error_log("Участник {$participant['fio']}: возраст = {$age}, диапазон = {$minAge}-{$maxAge}");
-        
         if ($age >= $minAge && $age <= $maxAge) {
-            error_log("Участник {$participant['fio']} подходит по возрасту");
             
             // Проверяем, что участник зарегистрирован на эту дисциплину
             $disciplineSql = "
@@ -281,10 +265,20 @@ function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $min
             
             if ($disciplineData) {
                 $discipline = json_decode($disciplineData['discipline'], true);
-                error_log("Дисциплины участника {$participant['fio']}: " . json_encode($discipline));
                 
                 if ($discipline && isset($discipline[$boatClass])) {
-                    error_log("Участник {$participant['fio']} зарегистрирован на дисциплину {$boatClass}");
+                    $addedCount++;
+                    
+                    // Загружаем существующие номера дорожек из базы данных
+                    $existingLane = null;
+                    $existingWater = null;
+                    if (isset($discipline[$boatClass]['lane'])) {
+                        $existingLane = $discipline[$boatClass]['lane'];
+                    }
+                    if (isset($discipline[$boatClass]['water'])) {
+                        $existingWater = $discipline[$boatClass]['water'];
+                    }
+                    
                     $filteredParticipants[] = [
                         'userId' => $participant['userid'],
                         'userid' => $participant['userid'], // Добавляем дублирующее поле для совместимости
@@ -294,24 +288,19 @@ function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $min
                         'sportzvanie' => $participant['sportzvanie'],
                         'teamName' => $participant['teamname'] ?? '',
                         'teamCity' => $participant['teamcity'] ?? '',
-                        'lane' => null, // Будет назначен автоматически
+                        'lane' => $existingLane, // Загружаем существующий номер дорожки
+                        'water' => $existingWater ?? $existingLane, // Загружаем существующий номер воды
                         'place' => null,
                         'finishTime' => null,
                         'addedManually' => false,
                         'addedAt' => date('Y-m-d H:i:s')
                     ];
-                } else {
-                    error_log("Участник {$participant['fio']} НЕ зарегистрирован на дисциплину {$boatClass}");
                 }
-            } else {
-                error_log("Участник {$participant['fio']} не найден в listreg");
             }
-        } else {
-            error_log("Участник {$participant['fio']} НЕ подходит по возрасту");
         }
     }
     
-    error_log("Отфильтровано участников для группы {$boatClass}_{$sex}_{$distance}_{$minAge}-{$maxAge}: " . count($filteredParticipants));
+    error_log("✅ Группа {$boatClass}_{$sex}_{$distance} (возраст {$minAge}-{$maxAge}): добавлено {$addedCount} участников");
     
     return $filteredParticipants;
 }
@@ -326,6 +315,33 @@ function assignLanesToParticipants($participants, $boatClass) {
     
     // Определяем максимальное количество дорожек для типа лодки
     $maxLanes = getMaxLanesForBoat($boatClass);
+    
+    // Проверяем, есть ли уже назначенные номера дорожек
+    $hasExistingLanes = false;
+    foreach ($participants as $participant) {
+        if (isset($participant['lane']) && $participant['lane'] !== null && $participant['lane'] !== '') {
+            $hasExistingLanes = true;
+            error_log("🔄 [ASSIGN_LANES] Найден участник с существующим номером дорожки: {$participant['fio']} - lane={$participant['lane']}");
+            break;
+        }
+    }
+    
+    // Если номера дорожек уже назначены, не изменяем их
+    if ($hasExistingLanes) {
+        error_log("🔄 [ASSIGN_LANES] Найдены существующие номера дорожек, сохраняем их");
+        foreach ($participants as &$participant) {
+            // Убеждаемся, что поле water также заполнено
+            if (isset($participant['lane']) && !isset($participant['water'])) {
+                $participant['water'] = $participant['lane'];
+            } elseif (isset($participant['water']) && !isset($participant['lane'])) {
+                $participant['lane'] = $participant['water'];
+            }
+        }
+        return $participants;
+    }
+    
+    // Если номеров дорожек нет, назначаем новые
+    error_log("🔄 [ASSIGN_LANES] Назначаем новые номера дорожек");
     
     // Перемешиваем участников для случайного распределения
     shuffle($participants);

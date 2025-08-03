@@ -155,6 +155,19 @@ class ProtocolsManager {
             console.log('Заголовки ответа:', Object.fromEntries(response.headers.entries()));
             
             if (data.success) {
+                console.log('✅ [LOAD_PROTOCOLS_DATA] Данные получены успешно');
+                console.log('Количество протоколов:', data.protocols?.length || 0);
+                
+                if (data.protocols && data.protocols.length > 0) {
+                    console.log('Первый протокол:', data.protocols[0]);
+                    if (data.protocols[0].ageGroups && data.protocols[0].ageGroups.length > 0) {
+                        console.log('Первая возрастная группа:', data.protocols[0].ageGroups[0]);
+                        if (data.protocols[0].ageGroups[0].participants && data.protocols[0].ageGroups[0].participants.length > 0) {
+                            console.log('Первый участник:', data.protocols[0].ageGroups[0].participants[0]);
+                        }
+                    }
+                }
+                
                 this.protocolsData = data.protocols;
                 this.renderProtocols();
                 console.log('Протоколы загружены успешно, количество:', this.protocolsData.length);
@@ -165,7 +178,7 @@ class ProtocolsManager {
                     this.syncContainerHeights();
                 }, 100);
             } else {
-                console.error('Ошибка загрузки данных:', data.message);
+                console.error('❌ [LOAD_PROTOCOLS_DATA] Ошибка загрузки данных:', data.message);
                 this.showNotification('Ошибка загрузки данных: ' + data.message, 'error');
             }
         } catch (error) {
@@ -267,19 +280,19 @@ class ProtocolsManager {
 
         // Обработчики редактирования полей
         document.addEventListener('click', (e) => {
-            if (e.target.classList.contains('edit-field')) {
+            if (e.target && e.target.classList && e.target.classList.contains('edit-field')) {
                 this.makeFieldEditable(e.target);
             }
         });
 
         document.addEventListener('blur', (e) => {
-            if (e.target.classList.contains('edit-field') && e.target.classList.contains('editing')) {
+            if (e.target && e.target.classList && e.target.classList.contains('edit-field') && e.target.classList.contains('editing')) {
                 this.saveFieldValue(e.target);
             }
         }, true);
 
         document.addEventListener('keydown', (e) => {
-            if (e.target.classList.contains('edit-field') && e.target.classList.contains('editing')) {
+            if (e.target && e.target.classList && e.target.classList.contains('edit-field') && e.target.classList.contains('editing')) {
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     this.saveFieldValue(e.target);
@@ -431,13 +444,19 @@ class ProtocolsManager {
 
     // Отрисовка протоколов
     renderProtocols() {
-        console.log('Отрисовка протоколов:', this.protocolsData);
+        console.log('🔄 [RENDER_PROTOCOLS] Начинаем отрисовку протоколов');
+        console.log('Данные протоколов:', this.protocolsData);
         
         const startContainer = document.getElementById('start-protocols');
         const finishContainer = document.getElementById('finish-protocols');
         
+        console.log('Контейнеры найдены:', {
+            startContainer: !!startContainer,
+            finishContainer: !!finishContainer
+        });
+        
         if (!startContainer || !finishContainer) {
-            console.error('Контейнеры протоколов не найдены');
+            console.error('❌ [RENDER_PROTOCOLS] Контейнеры протоколов не найдены');
             return;
         }
 
@@ -446,24 +465,31 @@ class ProtocolsManager {
         finishContainer.innerHTML = '';
 
         if (!this.protocolsData || this.protocolsData.length === 0) {
+            console.log('⚠️ [RENDER_PROTOCOLS] Нет данных протоколов');
             startContainer.innerHTML = '<div class="empty-state"><i class="fas fa-file-alt"></i><p>Протоколы не найдены</p></div>';
             finishContainer.innerHTML = '<div class="empty-state"><i class="fas fa-file-alt"></i><p>Протоколы не найдены</p></div>';
             return;
         }
 
+        console.log('🔄 [RENDER_PROTOCOLS] Генерируем HTML для стартовых протоколов');
         // Генерируем HTML для стартовых протоколов
         const startHTML = this.generateProtocolsHTML(this.protocolsData, 'start');
         startContainer.innerHTML = startHTML;
 
+        console.log('🔄 [RENDER_PROTOCOLS] Генерируем HTML для финишных протоколов');
         // Генерируем HTML для финишных протоколов
         const finishHTML = this.generateProtocolsHTML(this.protocolsData, 'finish');
         finishContainer.innerHTML = finishHTML;
 
+        console.log('🔄 [RENDER_PROTOCOLS] Синхронизируем высоту контейнеров');
         // Синхронизируем высоту контейнеров
         this.syncContainerHeights();
 
+        console.log('🔄 [RENDER_PROTOCOLS] Обновляем отладочную информацию');
         // Обновляем отладочную информацию
         this.updateDebugInfo();
+        
+        console.log('✅ [RENDER_PROTOCOLS] Отрисовка завершена');
     }
 
     // Синхронизация высоты контейнеров протоколов
@@ -528,18 +554,19 @@ class ProtocolsManager {
 
     // Генерация HTML для протоколов
     generateProtocolsHTML(protocolsData, type) {
+        console.log(`🔄 [GENERATE_PROTOCOLS_HTML] Генерируем HTML для типа: ${type}`);
+        console.log('Данные протоколов:', protocolsData);
+        
+        if (!protocolsData || protocolsData.length === 0) {
+            console.log('⚠️ [GENERATE_PROTOCOLS_HTML] Нет данных протоколов');
+            return '<div class="empty-state"><i class="fas fa-file-alt"></i><p>Протоколы не найдены</p></div>';
+        }
+
         let html = '<div class="protocols-container">';
         
-        // Проверяем, что protocolsData существует и является массивом
-        if (!protocolsData || !Array.isArray(protocolsData)) {
-            html += `<div class="alert alert-warning">`;
-            html += `<i class="fas fa-exclamation-triangle"></i> Нет данных протоколов для отображения`;
-            html += `</div>`;
-            html += '</div>';
-            return html;
-        }
-        
-        protocolsData.forEach(protocol => {
+        protocolsData.forEach((protocol, protocolIndex) => {
+            console.log(`🔄 [GENERATE_PROTOCOLS_HTML] Обрабатываем протокол ${protocolIndex + 1}:`, protocol);
+            
             const boatClassName = this.getBoatClassName(protocol.discipline);
             const sexName = protocol.sex === 'М' ? 'Мужчины' : (protocol.sex === 'Ж' ? 'Женщины' : 'Смешанные команды');
             
@@ -548,122 +575,130 @@ class ProtocolsManager {
             
             // Проверяем, что ageGroups существует и является массивом
             if (protocol.ageGroups && Array.isArray(protocol.ageGroups)) {
-                protocol.ageGroups.forEach(ageGroup => {
-                const isProtected = ageGroup.protected || false;
-                const isFinishComplete = type === 'finish' && this.isFinishProtocolComplete(ageGroup);
-                const protectedClass = isProtected ? 'protected-protocol' : '';
-                const completedClass = isFinishComplete ? 'completed-finish-protocol' : '';
-                const combinedClass = `${protectedClass} ${completedClass}`.trim();
-                
-                html += `<div class="age-group mb-3">`;
-                html += `<div class="d-flex justify-content-between align-items-center mb-2">`;
-                html += `<h6 class="age-title">Протокол №${ageGroup.protocol_number} - ${ageGroup.name}</h6>`;
-                if (isProtected) {
-                    html += `<span class="badge bg-success"><i class="fas fa-shield-alt"></i> Защищен</span>`;
-                }
-                if (isFinishComplete) {
-                    html += `<span class="badge bg-success"><i class="fas fa-check-circle"></i> Заполнен</span>`;
-                }
-                html += `</div>`;
-                
-                html += `<div class="table-responsive">`;
-                html += `<table class="table table-sm table-bordered protocol-table ${combinedClass}" data-group="${ageGroup.redisKey}" data-type="${type}">`;
-                html += `<thead class="table-light">`;
-                html += `<tr>`;
-                
-                // Заголовки в зависимости от типа протокола
-                if (type === 'start') {
-                    html += `<th>Вода</th>`;
-                    html += `<th>Номер спортсмена</th>`;
-                    html += `<th>ФИО</th>`;
-                    html += `<th>Дата рождения</th>`;
-                    html += `<th>Спортивный разряд</th>`;
-                    if (protocol.discipline === 'D-10') {
-                        html += `<th>Город команды</th>`;
-                        html += `<th>Название команды</th>`;
-                    }
-                } else {
-                    html += `<th>Место</th>`;
-                    html += `<th>Время финиша</th>`;
-                    html += `<th>Вода</th>`;
-                    html += `<th>Номер спортсмена</th>`;
-                    html += `<th>ФИО</th>`;
-                    html += `<th>Дата рождения</th>`;
-                    html += `<th>Спортивный разряд</th>`;
-                    if (protocol.discipline === 'D-10') {
-                        html += `<th>Город команды</th>`;
-                        html += `<th>Название команды</th>`;
-                    }
-                }
-                
-                html += `<th>Действия</th>`;
-                html += `</tr>`;
-                html += `</thead>`;
-                html += `<tbody>`;
-                
-                if (ageGroup.participants && ageGroup.participants.length > 0) {
-                    ageGroup.participants.forEach(participant => {
-                        html += this.generateParticipantRow(participant, type, protocol.discipline);
-                    });
-                } else {
-                    // Правильный расчет количества столбцов для colspan
-                    let colCount = 0;
+                protocol.ageGroups.forEach((ageGroup, ageGroupIndex) => {
+                    console.log(`🔄 [GENERATE_PROTOCOLS_HTML] Обрабатываем возрастную группу ${ageGroupIndex + 1}:`, ageGroup);
                     
+                    // Проверяем, что у нас есть redisKey
+                    if (!ageGroup.redisKey) {
+                        console.error('❌ [GENERATE_PROTOCOLS_HTML] Отсутствует redisKey для возрастной группы:', ageGroup);
+                        return;
+                    }
+                    
+                    const isProtected = ageGroup.protected || false;
+                    const isFinishComplete = type === 'finish' && this.isFinishProtocolComplete(ageGroup);
+                    const protectedClass = isProtected ? 'protected-protocol' : '';
+                    const completedClass = isFinishComplete ? 'completed-finish-protocol' : '';
+                    const combinedClass = `${protectedClass} ${completedClass}`.trim();
+                    
+                    html += `<div class="age-group mb-3">`;
+                    html += `<div class="d-flex justify-content-between align-items-center mb-2">`;
+                    html += `<h6 class="age-title">Протокол №${ageGroup.protocol_number} - ${ageGroup.name}</h6>`;
+                    if (isProtected) {
+                        html += `<span class="badge bg-success"><i class="fas fa-shield-alt"></i> Защищен</span>`;
+                    }
+                    if (isFinishComplete) {
+                        html += `<span class="badge bg-success"><i class="fas fa-check-circle"></i> Заполнен</span>`;
+                    }
+                    html += `</div>`;
+                    
+                    html += `<div class="table-responsive">`;
+                    html += `<table class="table table-sm table-bordered protocol-table ${combinedClass}" data-group="${ageGroup.redisKey}" data-type="${type}">`;
+                    html += `<thead class="table-light">`;
+                    html += `<tr>`;
+                    
+                    // Заголовки в зависимости от типа протокола
                     if (type === 'start') {
-                        // Стартовые протоколы: Вода, Номер спортсмена, ФИО, Дата рождения, Спортивный разряд
-                        colCount = 5;
+                        html += `<th>Вода</th>`;
+                        html += `<th>Номер спортсмена</th>`;
+                        html += `<th>ФИО</th>`;
+                        html += `<th>Дата рождения</th>`;
+                        html += `<th>Спортивный разряд</th>`;
                         if (protocol.discipline === 'D-10') {
-                            // Дополнительные столбцы для драконов: Город команды, Название команды
-                            colCount += 2;
+                            html += `<th>Город команды</th>`;
+                            html += `<th>Название команды</th>`;
                         }
                     } else {
-                        // Финишные протоколы: Место, Время финиша, Вода, Номер спортсмена, ФИО, Дата рождения, Спортивный разряд
-                        colCount = 7;
+                        html += `<th>Место</th>`;
+                        html += `<th>Время финиша</th>`;
+                        html += `<th>Вода</th>`;
+                        html += `<th>Номер спортсмена</th>`;
+                        html += `<th>ФИО</th>`;
+                        html += `<th>Дата рождения</th>`;
+                        html += `<th>Спортивный разряд</th>`;
                         if (protocol.discipline === 'D-10') {
-                            // Дополнительные столбцы для драконов: Город команды, Название команды
-                            colCount += 2;
+                            html += `<th>Город команды</th>`;
+                            html += `<th>Название команды</th>`;
                         }
                     }
                     
-                    // Добавляем столбец "Действия"
-                    colCount += 1;
+                    html += `<th>Действия</th>`;
+                    html += `</tr>`;
+                    html += `</thead>`;
+                    html += `<tbody>`;
                     
-                    html += `<tr><td colspan="${colCount}" class="text-center text-muted">Нет участников</td></tr>`;
-                }
-                
-                html += `</tbody>`;
-                html += `</table>`;
-                
-                // Кнопки добавления участника и скачивания протокола на одной строке
-                if (type === 'start') {
-                    // Для стартовых протоколов: зеленая кнопка добавления + зеленая кнопка скачивания
-                    html += `<div class="mt-2 d-flex gap-2">`;
-                    html += `<button class="btn btn-sm btn-success add-participant-btn" data-group-key="${ageGroup.redisKey}">`;
-                    html += `<i class="fas fa-user-plus"></i> Добавить участника`;
-                    html += `</button>`;
+                    if (ageGroup.participants && ageGroup.participants.length > 0) {
+                        ageGroup.participants.forEach(participant => {
+                            html += this.generateParticipantRow(participant, type, protocol.discipline, ageGroup.redisKey);
+                        });
+                    } else {
+                        // Правильный расчет количества столбцов для colspan
+                        let colCount = 0;
+                        
+                        if (type === 'start') {
+                            // Стартовые протоколы: Вода, Номер спортсмена, ФИО, Дата рождения, Спортивный разряд
+                            colCount = 5;
+                            if (protocol.discipline === 'D-10') {
+                                // Дополнительные столбцы для драконов: Город команды, Название команды
+                                colCount += 2;
+                            }
+                        } else {
+                            // Финишные протоколы: Место, Время финиша, Вода, Номер спортсмена, ФИО, Дата рождения, Спортивный разряд
+                            colCount = 7;
+                            if (protocol.discipline === 'D-10') {
+                                // Дополнительные столбцы для драконов: Город команды, Название команды
+                                colCount += 2;
+                            }
+                        }
+                        
+                        // Добавляем столбец "Действия"
+                        colCount += 1;
+                        
+                        html += `<tr><td colspan="${colCount}" class="text-center text-muted">Нет участников</td></tr>`;
+                    }
                     
-                    const downloadBtnClass = isFinishComplete ? 'btn-success' : 'btn-outline-success';
-                    const downloadBtnDisabled = type === 'finish' && !isFinishComplete ? 'disabled' : '';
+                    html += `</tbody>`;
+                    html += `</table>`;
                     
-                    html += `<button class="btn btn-sm ${downloadBtnClass} download-protocol-btn" data-group-key="${ageGroup.redisKey}" data-protocol-type="${type}" ${downloadBtnDisabled}>`;
-                    html += `<i class="fas fa-download"></i> Скачать протокол`;
-                    html += `</button>`;
+                    // Кнопки добавления участника и скачивания протокола на одной строке
+                    if (type === 'start') {
+                        // Для стартовых протоколов: зеленая кнопка добавления + зеленая кнопка скачивания
+                        html += `<div class="mt-2 d-flex gap-2">`;
+                        html += `<button class="btn btn-sm btn-success add-participant-btn" data-group-key="${ageGroup.redisKey}">`;
+                        html += `<i class="fas fa-user-plus"></i> Добавить участника`;
+                        html += `</button>`;
+                        
+                        const downloadBtnClass = isFinishComplete ? 'btn-success' : 'btn-outline-success';
+                        const downloadBtnDisabled = type === 'finish' && !isFinishComplete ? 'disabled' : '';
+                        
+                        html += `<button class="btn btn-sm ${downloadBtnClass} download-protocol-btn" data-group-key="${ageGroup.redisKey}" data-protocol-type="${type}" ${downloadBtnDisabled}>`;
+                        html += `<i class="fas fa-download"></i> Скачать протокол`;
+                        html += `</button>`;
+                        html += `</div>`;
+                    } else {
+                        // Для финишных протоколов: синяя кнопка скачивания
+                        const downloadBtnClass = isFinishComplete ? 'btn-primary' : 'btn-outline-primary';
+                        const downloadBtnDisabled = type === 'finish' && !isFinishComplete ? 'disabled' : '';
+                        
+                        html += `<div class="mt-2">`;
+                        html += `<button class="btn btn-sm ${downloadBtnClass} download-protocol-btn" data-group-key="${ageGroup.redisKey}" data-protocol-type="${type}" ${downloadBtnDisabled}>`;
+                        html += `<i class="fas fa-download"></i> Скачать протокол`;
+                        html += `</button>`;
+                        html += `</div>`;
+                    }
+                    
                     html += `</div>`;
-                } else {
-                    // Для финишных протоколов: синяя кнопка скачивания
-                    const downloadBtnClass = isFinishComplete ? 'btn-primary' : 'btn-outline-primary';
-                    const downloadBtnDisabled = type === 'finish' && !isFinishComplete ? 'disabled' : '';
-                    
-                    html += `<div class="mt-2">`;
-                    html += `<button class="btn btn-sm ${downloadBtnClass} download-protocol-btn" data-group-key="${ageGroup.redisKey}" data-protocol-type="${type}" ${downloadBtnDisabled}>`;
-                    html += `<i class="fas fa-download"></i> Скачать протокол`;
-                    html += `</button>`;
                     html += `</div>`;
-                }
-                
-                html += `</div>`;
-                html += `</div>`;
-            });
+                });
             } else {
                 // Если ageGroups не существует, показываем сообщение
                 html += `<div class="alert alert-warning">`;
@@ -675,6 +710,7 @@ class ProtocolsManager {
         });
         
         html += '</div>';
+        console.log('✅ [GENERATE_PROTOCOLS_HTML] HTML сгенерирован успешно');
         return html;
     }
 
@@ -959,23 +995,23 @@ class ProtocolsManager {
     }
 
     // Генерация строки участника
-    generateParticipantRow(participant, type, boatClass) {
+    generateParticipantRow(participant, type, boatClass, groupKey) {
         let html = '<tr class="participant-row">';
         
         if (type === 'start') {
-            html += `<td class="edit-field" data-field="lane" data-participant-id="${participant.user_id}">${participant.lane || '-'}</td>`;
+            html += `<td class="edit-field" data-field="water" data-participant-id="${participant.userid}">${participant.lane || participant.water || '-'}</td>`;
             html += `<td>${participant.userid || '-'}</td>`;
-            html += `<td class="edit-field" data-field="fio" data-participant-id="${participant.user_id}">${participant.fio}</td>`;
+            html += `<td class="edit-field" data-field="fio" data-participant-id="${participant.userid}">${participant.fio}</td>`;
             html += `<td>${participant.birthdata}</td>`;
-            html += `<td class="edit-field" data-field="sportzvanie" data-participant-id="${participant.user_id}">${participant.sportzvanie}</td>`;
+            html += `<td class="edit-field" data-field="sportzvanie" data-participant-id="${participant.userid}">${participant.sportzvanie}</td>`;
             if (boatClass === 'D-10') {
-                html += `<td class="edit-field" data-field="teamcity" data-participant-id="${participant.user_id}">${participant.teamcity || '-'}</td>`;
-                html += `<td class="edit-field" data-field="teamname" data-participant-id="${participant.user_id}">${participant.teamname || '-'}</td>`;
+                html += `<td class="edit-field" data-field="teamcity" data-participant-id="${participant.userid}">${participant.teamcity || '-'}</td>`;
+                html += `<td class="edit-field" data-field="teamname" data-participant-id="${participant.userid}">${participant.teamname || '-'}</td>`;
             }
         } else {
-            html += `<td class="edit-field" data-field="place" data-participant-id="${participant.user_id}">${participant.place || ''}</td>`;
-            html += `<td class="edit-field" data-field="finishTime" data-participant-id="${participant.user_id}">${participant.finishTime || ''}</td>`;
-            html += `<td>${participant.lane || '-'}</td>`;
+            html += `<td class="edit-field" data-field="place" data-participant-id="${participant.userid}">${participant.place || ''}</td>`;
+            html += `<td class="edit-field" data-field="finishTime" data-participant-id="${participant.userid}">${participant.finishTime || ''}</td>`;
+            html += `<td class="edit-field" data-field="water" data-participant-id="${participant.userid}">${participant.lane || participant.water || '-'}</td>`;
             html += `<td>${participant.userid || '-'}</td>`;
             html += `<td>${participant.fio}</td>`;
             html += `<td>${participant.birthdata}</td>`;
@@ -987,7 +1023,7 @@ class ProtocolsManager {
         }
         
         html += `<td>`;
-        html += `<button class="btn btn-sm btn-outline-danger" onclick="protocolsManager.removeParticipant(${participant.user_id}, '${participant.redisKey}')">`;
+        html += `<button class="btn btn-sm btn-outline-danger" onclick="protocolsManager.removeParticipant(${participant.userid}, '${groupKey}')">`;
         html += `<i class="fas fa-trash"></i>`;
         html += `</button>`;
         html += `</td>`;
@@ -1023,10 +1059,26 @@ class ProtocolsManager {
         const participantId = element.dataset.participantId;
         const groupKey = element.closest('table').dataset.group;
         
+        // Проверяем, что participantId не undefined
+        if (!participantId || participantId === 'undefined') {
+            this.showNotification('Ошибка: не удалось определить участника', 'error');
+            element.classList.remove('editing');
+            element.contentEditable = false;
+            return;
+        }
+        
         element.classList.remove('editing');
         element.contentEditable = false;
         
         try {
+            console.log('Отправляем данные для сохранения:', {
+                meroId: this.currentMeroId,
+                groupKey: groupKey,
+                participantUserId: participantId,
+                field: field,
+                value: newValue
+            });
+            
             const response = await fetch('/lks/php/secretary/update_participant_data.php', {
                 method: 'POST',
                 headers: {
@@ -1035,7 +1087,7 @@ class ProtocolsManager {
                 body: JSON.stringify({
                     meroId: this.currentMeroId,
                     groupKey: groupKey,
-                    participantId: participantId,
+                    participantUserId: participantId, // Исправлено: participantUserId вместо participantId
                     field: field,
                     value: newValue
                 })
@@ -1076,8 +1128,17 @@ class ProtocolsManager {
             for (const ageGroup of protocol.ageGroups) {
                 if (ageGroup.redisKey === groupKey) {
                     for (const participant of ageGroup.participants) {
-                        if (participant.userId == participantId) {
-                            participant[field] = value;
+                        if (participant.userid == participantId) {
+                            // Специальная обработка для поля "вода"
+                            if (field === 'water') {
+                                participant.water = value;
+                                participant.lane = value; // Также обновляем lane для совместимости
+                            } else if (field === 'lane') {
+                                participant.lane = value;
+                                participant.water = value; // Также обновляем water для совместимости
+                            } else {
+                                participant[field] = value;
+                            }
                             return;
                         }
                     }
@@ -1092,8 +1153,15 @@ class ProtocolsManager {
             for (const ageGroup of protocol.ageGroups) {
                 if (ageGroup.redisKey === groupKey) {
                     for (const participant of ageGroup.participants) {
-                        if (participant.userId == participantId) {
-                            return participant[field] || '';
+                        if (participant.userid == participantId) {
+                            // Специальная обработка для поля "вода"
+                            if (field === 'water') {
+                                return participant.water || participant.lane || '';
+                            } else if (field === 'lane') {
+                                return participant.lane || participant.water || '';
+                            } else {
+                                return participant[field] || '';
+                            }
                         }
                     }
                 }
@@ -1104,36 +1172,79 @@ class ProtocolsManager {
 
     // Удаление участника
     async removeParticipant(participantId, groupKey) {
+        console.log('🔄 [REMOVE_PARTICIPANT] Начинаем удаление участника:', { participantId, groupKey });
+        console.log('🔄 [REMOVE_PARTICIPANT] currentMeroId:', this.currentMeroId);
+        
+        // Проверяем, что параметры не undefined
+        if (!participantId || participantId === 'undefined' || !groupKey || groupKey === 'undefined') {
+            console.log('❌ [REMOVE_PARTICIPANT] Некорректные параметры:', { participantId, groupKey });
+            this.showNotification('Ошибка: некорректные параметры для удаления', 'error');
+            return;
+        }
+        
         if (!confirm('Вы уверены, что хотите удалить этого участника?')) {
+            console.log('❌ [REMOVE_PARTICIPANT] Пользователь отменил удаление');
             return;
         }
 
         try {
-            // Находим участника в данных
-            let found = false;
-            for (const protocol of this.protocolsData) {
-                for (const ageGroup of protocol.ageGroups) {
-                    if (ageGroup.redisKey === groupKey) {
-                        const index = ageGroup.participants.findIndex(p => p.userId == participantId);
-                        if (index !== -1) {
-                            ageGroup.participants.splice(index, 1);
-                            found = true;
-                            break;
+            const requestData = {
+                meroId: this.currentMeroId,
+                groupKey: groupKey,
+                participantUserId: participantId
+            };
+            
+            console.log('🔄 [REMOVE_PARTICIPANT] Отправляем запрос на сервер:', requestData);
+            console.log('🔄 [REMOVE_PARTICIPANT] URL запроса:', '/lks/php/secretary/remove_participant.php');
+            
+            // Отправляем запрос на сервер для удаления участника
+            const response = await fetch('/lks/php/secretary/remove_participant.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(requestData)
+            });
+
+            console.log('🔄 [REMOVE_PARTICIPANT] Статус ответа:', response.status);
+            console.log('🔄 [REMOVE_PARTICIPANT] Заголовки ответа:', response.headers);
+            
+            const data = await response.json();
+            console.log('🔄 [REMOVE_PARTICIPANT] Ответ сервера:', data);
+            
+            if (data.success) {
+                // Находим участника в данных и удаляем его
+                let found = false;
+                for (const protocol of this.protocolsData) {
+                    for (const ageGroup of protocol.ageGroups) {
+                        if (ageGroup.redisKey === groupKey) {
+                            const index = ageGroup.participants.findIndex(p => p.userid == participantId);
+                            if (index !== -1) {
+                                console.log('🔄 [REMOVE_PARTICIPANT] Найден участник для удаления из памяти:', ageGroup.participants[index]);
+                                ageGroup.participants.splice(index, 1);
+                                found = true;
+                                break;
+                            }
                         }
                     }
+                    if (found) break;
                 }
-                if (found) break;
-            }
 
-            if (found) {
-                // Обновляем отображение
-                this.renderProtocols();
-                this.showNotification('Участник удален', 'success');
+                if (found) {
+                    // Обновляем отображение
+                    this.renderProtocols();
+                    this.showNotification('Участник удален', 'success');
+                    console.log('✅ [REMOVE_PARTICIPANT] Участник успешно удален');
+                } else {
+                    this.showNotification('Участник не найден в данных', 'error');
+                    console.log('❌ [REMOVE_PARTICIPANT] Участник не найден в данных');
+                }
             } else {
-                this.showNotification('Участник не найден', 'error');
+                this.showNotification('Ошибка удаления: ' + data.message, 'error');
+                console.log('❌ [REMOVE_PARTICIPANT] Ошибка сервера:', data.message);
             }
         } catch (error) {
-            console.error('Ошибка удаления участника:', error);
+            console.error('❌ [REMOVE_PARTICIPANT] Ошибка удаления участника:', error);
             this.showNotification('Ошибка удаления участника', 'error');
         }
     }

@@ -26,12 +26,24 @@ if (!$auth->hasAnyRole(['Secretary', 'SuperUser', 'Admin'])) {
 $input = json_decode(file_get_contents('php://input'), true);
 $meroId = $input['meroId'] ?? null;
 $groupKey = $input['groupKey'] ?? null;
-$participantUserId = $input['participantUserId'] ?? null;
+$participantUserId = $input['participantUserId'] ?? $input['participantId'] ?? null; // Поддержка обоих вариантов
 $field = $input['field'] ?? null;
 $value = $input['value'] ?? null;
 
+// Отладочная информация
+error_log("🔄 [UPDATE_PARTICIPANT_DATA] Получены данные: " . json_encode($input));
+error_log("🔄 [UPDATE_PARTICIPANT_DATA] participantUserId: " . ($participantUserId ?? 'null'));
+
 if (!$meroId || !$groupKey || !$participantUserId || !$field) {
+    error_log("❌ [UPDATE_PARTICIPANT_DATA] Не все параметры указаны: meroId=$meroId, groupKey=$groupKey, participantUserId=$participantUserId, field=$field");
     echo json_encode(['success' => false, 'message' => 'Не все параметры указаны']);
+    exit;
+}
+
+// Проверяем, что participantUserId является числом
+if (!is_numeric($participantUserId)) {
+    error_log("❌ [UPDATE_PARTICIPANT_DATA] participantUserId не является числом: $participantUserId");
+    echo json_encode(['success' => false, 'message' => 'Некорректный ID участника']);
     exit;
 }
 
@@ -73,7 +85,16 @@ try {
         $discipline[$boatClass] = [];
     }
     
-    $discipline[$boatClass][$field] = $value;
+    // Специальная обработка для поля "вода" (water)
+    if ($field === 'water') {
+        $discipline[$boatClass]['water'] = $value;
+        $discipline[$boatClass]['lane'] = $value; // Также обновляем lane для совместимости
+    } elseif ($field === 'lane') {
+        $discipline[$boatClass]['lane'] = $value;
+        $discipline[$boatClass]['water'] = $value; // Также обновляем water для совместимости
+    } else {
+        $discipline[$boatClass][$field] = $value;
+    }
     
     // Обновляем данные в базе
     $stmt = $db->prepare("
