@@ -196,7 +196,8 @@ class SecretaryEventManager {
                             'lane' => $participant['lane'],
                             'start_number' => $participant['start_number'],
                             'place' => null,
-                            'finishTime' => null
+                            'finishTime' => null,
+                            'water' => '' // Добавляем поле "вода" с пустым значением по умолчанию
                         ];
                     }
                 }
@@ -279,6 +280,7 @@ class SecretaryEventManager {
         foreach ($participants as &$participant) {
             $participant['age'] = $this->calculateAge($participant['birthdata']);
             $participant['participates_in_distance'] = $this->checkParticipatesInDistance($participant, $discipline);
+            $participant['water'] = ''; // Добавляем поле "вода" с пустым значением по умолчанию
         }
         
         return array_filter($participants, function($p) {

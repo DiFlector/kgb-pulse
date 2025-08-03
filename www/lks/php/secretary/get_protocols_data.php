@@ -24,6 +24,7 @@ header('Content-Type: application/json; charset=utf-8');
 try {
     $input = json_decode(file_get_contents('php://input'), true);
     $meroId = $input['meroId'] ?? null;
+    $selectedDisciplines = $input['disciplines'] ?? null;
     
     if (!$meroId) {
         throw new Exception('Не указан ID мероприятия');
@@ -79,6 +80,34 @@ try {
             $ageGroupList = array_map('trim', explode(',', $ageGroupStr));
             
             foreach ($distanceList as $dist) {
+                // Проверяем, есть ли эта дисциплина в выбранных
+                if ($selectedDisciplines && is_array($selectedDisciplines)) {
+                    $disciplineFound = false;
+                    foreach ($selectedDisciplines as $selectedDiscipline) {
+                        if (is_array($selectedDiscipline)) {
+                            // Если дисциплина передана как объект
+                            if ($selectedDiscipline['class'] === $boatClass && 
+                                $selectedDiscipline['sex'] === $sex && 
+                                $selectedDiscipline['distance'] === $dist) {
+                                $disciplineFound = true;
+                                break;
+                            }
+                        } else {
+                            // Если дисциплина передана как строка
+                            $disciplineString = "{$boatClass}_{$sex}_{$dist}";
+                            if ($selectedDiscipline === $disciplineString) {
+                                $disciplineFound = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Если дисциплина не выбрана, пропускаем её
+                    if (!$disciplineFound) {
+                        continue;
+                    }
+                }
+                
                 foreach ($ageGroupList as $ageGroup) {
                     // Извлекаем название группы
                     if (preg_match('/^(.+?):\s*(\d+)-(\d+)$/', $ageGroup, $matches)) {
@@ -201,6 +230,7 @@ function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $min
                 
                 $filteredParticipants[] = [
                     'userId' => $participant['userid'],
+                    'userid' => $participant['userid'], // Добавляем дублирующее поле для совместимости
                     'fio' => $participant['fio'],
                     'sex' => $participant['sex'],
                     'birthdata' => $participant['birthdata'],
@@ -208,7 +238,7 @@ function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $min
                     'teamName' => $participant['teamname'] ?? '',
                     'teamCity' => $participant['teamcity'] ?? '',
                     'lane' => $lane,
-                    'water' => $water,
+                    'water' => $water ?? '', // Добавляем значение по умолчанию
                     'time' => $time,
                     'place' => $place,
                     'finishTime' => null,

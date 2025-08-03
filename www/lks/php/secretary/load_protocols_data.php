@@ -44,12 +44,14 @@ try {
     }
     
     $meroId = (int)$data['meroId'];
+    $selectedDisciplines = $data['disciplines'] ?? null;
     
     if ($meroId <= 0) {
         throw new Exception('Неверный ID мероприятия');
     }
     
     error_log("🔄 [LOAD_PROTOCOLS_DATA] Загрузка данных протоколов для мероприятия $meroId");
+    error_log("🔄 [LOAD_PROTOCOLS_DATA] Выбранные дисциплины: " . json_encode($selectedDisciplines));
     
     // Получаем данные мероприятия
     $db = Database::getInstance();
@@ -129,6 +131,34 @@ try {
             $ageGroupList = array_map('trim', explode(',', $ageGroupStr));
             
             foreach ($distanceList as $dist) {
+                // Проверяем, есть ли эта дисциплина в выбранных
+                if ($selectedDisciplines && is_array($selectedDisciplines)) {
+                    $disciplineFound = false;
+                    foreach ($selectedDisciplines as $selectedDiscipline) {
+                        if (is_array($selectedDiscipline)) {
+                            // Если дисциплина передана как объект
+                            if ($selectedDiscipline['class'] === $boatClass && 
+                                $selectedDiscipline['sex'] === $sex && 
+                                $selectedDiscipline['distance'] === $dist) {
+                                $disciplineFound = true;
+                                break;
+                            }
+                        } else {
+                            // Если дисциплина передана как строка
+                            $disciplineString = "{$boatClass}_{$sex}_{$dist}";
+                            if ($selectedDiscipline === $disciplineString) {
+                                $disciplineFound = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Если дисциплина не выбрана, пропускаем её
+                    if (!$disciplineFound) {
+                        continue;
+                    }
+                }
+                
                 foreach ($ageGroupList as $ageGroup) {
                     // Извлекаем название группы
                     if (preg_match('/^(.+?):\s*(\d+)-(\d+)$/', $ageGroup, $matches)) {
@@ -164,6 +194,22 @@ try {
     }
     
     error_log("✅ [LOAD_PROTOCOLS_DATA] Данные протоколов загружены успешно: " . count($protocolsData) . " протоколов");
+    
+    // Добавляем отладочную информацию о первом протоколе
+    if (!empty($protocolsData)) {
+        $firstProtocol = $protocolsData[0];
+        error_log("Первый протокол: " . json_encode($firstProtocol));
+        
+        if (!empty($firstProtocol['ageGroups'])) {
+            $firstAgeGroup = $firstProtocol['ageGroups'][0];
+            error_log("Первая возрастная группа: " . json_encode($firstAgeGroup));
+            
+            if (!empty($firstAgeGroup['participants'])) {
+                $firstParticipant = $firstAgeGroup['participants'][0];
+                error_log("Первый участник: " . json_encode($firstParticipant));
+            }
+        }
+    }
     
     echo json_encode([
         'success' => true,
@@ -205,6 +251,8 @@ function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $min
     $stmt->execute([$meroId, $sex]);
     $participants = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
+    error_log("Найдено участников для дисциплины {$boatClass}_{$sex}_{$distance}: " . count($participants));
+    
     $filteredParticipants = [];
     
     foreach ($participants as $participant) {
@@ -213,7 +261,11 @@ function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $min
         $yearEndDate = new DateTime($yearEnd);
         $age = $yearEndDate->diff($birthDate)->y;
         
+        error_log("Участник {$participant['fio']}: возраст = {$age}, диапазон = {$minAge}-{$maxAge}");
+        
         if ($age >= $minAge && $age <= $maxAge) {
+            error_log("Участник {$participant['fio']} подходит по возрасту");
+            
             // Проверяем, что участник зарегистрирован на эту дисциплину
             $disciplineSql = "
                 SELECT discipline 
@@ -226,9 +278,13 @@ function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $min
             
             if ($disciplineData) {
                 $discipline = json_decode($disciplineData['discipline'], true);
+                error_log("Дисциплины участника {$participant['fio']}: " . json_encode($discipline));
+                
                 if ($discipline && isset($discipline[$boatClass])) {
+                    error_log("Участник {$participant['fio']} зарегистрирован на дисциплину {$boatClass}");
                     $filteredParticipants[] = [
                         'userId' => $participant['userid'],
+                        'userid' => $participant['userid'], // Добавляем дублирующее поле для совместимости
                         'fio' => $participant['fio'],
                         'sex' => $participant['sex'],
                         'birthdata' => $participant['birthdata'],
@@ -241,10 +297,18 @@ function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $min
                         'addedManually' => false,
                         'addedAt' => date('Y-m-d H:i:s')
                     ];
+                } else {
+                    error_log("Участник {$participant['fio']} НЕ зарегистрирован на дисциплину {$boatClass}");
                 }
+            } else {
+                error_log("Участник {$participant['fio']} не найден в listreg");
             }
+        } else {
+            error_log("Участник {$participant['fio']} НЕ подходит по возрасту");
         }
     }
+    
+    error_log("Отфильтровано участников для группы {$boatClass}_{$sex}_{$distance}_{$minAge}-{$maxAge}: " . count($filteredParticipants));
     
     return $filteredParticipants;
 }

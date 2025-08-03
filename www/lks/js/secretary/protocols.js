@@ -778,6 +778,8 @@ class ProtocolsManager {
 
             const responseData = await authResponse.json();
             console.log('Получены данные от API:', responseData);
+            console.log('Первый протокол:', responseData.protocols?.[0]);
+            console.log('Участники первого протокола:', responseData.protocols?.[0]?.ageGroups?.[0]?.participants);
 
             if (responseData.success) {
                 console.log('Данные успешно загружены, обновляем таблицы...');
@@ -1036,6 +1038,10 @@ class ProtocolsManager {
 
     // Создание строки участника
     createParticipantRow(participant, number, groupKey) {
+        console.log('createParticipantRow вызван с данными:', participant);
+        console.log('userid:', participant.userid);
+        console.log('userId:', participant.userId);
+        
         const row = document.createElement('tr');
         row.className = 'participant-row';
         row.dataset.participantId = participant.userId || participant.userid; // Используем userId
@@ -1784,24 +1790,30 @@ class ProtocolsManager {
         console.log('=== ОБНОВЛЕНИЕ ПРОТОКОЛОВ ДАННЫМИ ===');
         console.log('Полученные данные для обновления:', data);
         console.log('Тип данных:', typeof data);
-        console.log('Количество ключей в данных:', Object.keys(data).length);
+        console.log('Это массив?', Array.isArray(data));
         
-        if (!data || typeof data !== 'object') {
+        if (!data || !Array.isArray(data)) {
             console.error('Некорректные данные для обновления:', data);
             return;
         }
         
-        // data содержит объект с ключами groupKey и значениями protocolData
-        // Каждый protocolData содержит массив participants
-        Object.keys(data).forEach(groupKey => {
-            const protocolData = data[groupKey];
-            console.log(`Обрабатываем группу ${groupKey}:`, protocolData);
+        // data содержит массив протоколов
+        data.forEach(protocol => {
+            console.log(`Обрабатываем протокол: ${protocol.discipline} ${protocol.sex} ${protocol.distance}`);
             
-            if (protocolData && protocolData.participants) {
-                console.log(`Найдено ${protocolData.participants.length} участников в группе ${groupKey}`);
-                this.updateProtocolTableByGroupKey(groupKey, protocolData.participants);
-            } else {
-                console.log(`Нет участников в группе ${groupKey}`);
+            if (protocol.ageGroups && Array.isArray(protocol.ageGroups)) {
+                protocol.ageGroups.forEach(ageGroup => {
+                    console.log(`Обрабатываем возрастную группу: ${ageGroup.name}`);
+                    console.log(`Участников в группе: ${ageGroup.participants?.length || 0}`);
+                    
+                    if (ageGroup.participants && Array.isArray(ageGroup.participants)) {
+                        // Формируем groupKey для поиска таблицы
+                        const groupKey = `1_${protocol.discipline}_${protocol.sex === 'М' ? 'M' : 'W'}_${protocol.distance}_${ageGroup.name}`;
+                        console.log(`Ищем таблицу с groupKey: ${groupKey}`);
+                        
+                        this.updateProtocolTableByGroupKey(groupKey, ageGroup.participants);
+                    }
+                });
             }
         });
         
@@ -1815,11 +1827,19 @@ class ProtocolsManager {
         const startContainer = document.getElementById('start-protocols');
         const finishContainer = document.getElementById('finish-protocols');
         
+        console.log('startContainer найден:', !!startContainer);
+        console.log('finishContainer найден:', !!finishContainer);
+        
         // Обновляем стартовые протоколы
         if (startContainer) {
             const startTables = startContainer.querySelectorAll('table');
+            console.log(`Найдено ${startTables.length} стартовых таблиц`);
+            
             startTables.forEach((table, index) => {
                 const tableGroupKey = this.getTableGroupKey(table);
+                console.log(`Таблица ${index + 1} имеет groupKey: ${tableGroupKey}`);
+                console.log(`Ищем groupKey: ${groupKey}`);
+                
                 if (tableGroupKey === groupKey) {
                     console.log(`Обновляем стартовую таблицу ${index + 1} для группы ${groupKey}`);
                     this.updateTableWithData(table, participants);
@@ -1830,8 +1850,12 @@ class ProtocolsManager {
         // Обновляем финишные протоколы
         if (finishContainer) {
             const finishTables = finishContainer.querySelectorAll('table');
+            console.log(`Найдено ${finishTables.length} финишных таблиц`);
+            
             finishTables.forEach((table, index) => {
                 const tableGroupKey = this.getTableGroupKey(table);
+                console.log(`Финишная таблица ${index + 1} имеет groupKey: ${tableGroupKey}`);
+                
                 if (tableGroupKey === groupKey) {
                     console.log(`Обновляем финишную таблицу ${index + 1} для группы ${groupKey}`);
                     this.updateTableWithData(table, participants);
@@ -1841,21 +1865,36 @@ class ProtocolsManager {
     }
     
     getTableGroupKey(table) {
+        console.log('getTableGroupKey вызван для таблицы:', table);
+        
         // Ищем ближайший элемент с классом age-group
         const ageGroupElement = table.closest('.age-group');
+        console.log('ageGroupElement найден:', !!ageGroupElement);
+        
         if (ageGroupElement) {
             // Извлекаем информацию из заголовка протокола
             const protocolTitle = ageGroupElement.querySelector('.age-title');
+            console.log('protocolTitle найден:', !!protocolTitle);
+            
             if (protocolTitle) {
                 const titleText = protocolTitle.textContent;
+                console.log('Текст заголовка:', titleText);
+                
                 // Парсим заголовок для извлечения информации о группе
                 // Пример: "Протокол №1 - Байдарка-одиночка (K-1), 200м, Мужчины, группа 1: 18-29"
                 const match = titleText.match(/Байдарка-одиночка \(K-1\)|Каноэ-одиночка \(C-1\)|Байдарка-двойка \(K-2\)|Каноэ-двойка \(C-2\)/);
+                console.log('match найден:', !!match);
+                
                 if (match) {
                     const classMatch = titleText.match(/\(([^)]+)\)/);
                     const distanceMatch = titleText.match(/(\d+)м/);
                     const sexMatch = titleText.match(/(Мужчины|Женщины)/);
                     const ageGroupMatch = titleText.match(/группа ([^:]+):/);
+                    
+                    console.log('classMatch:', classMatch);
+                    console.log('distanceMatch:', distanceMatch);
+                    console.log('sexMatch:', sexMatch);
+                    console.log('ageGroupMatch:', ageGroupMatch);
                     
                     if (classMatch && distanceMatch && sexMatch && ageGroupMatch) {
                         const classType = classMatch[1];
@@ -1864,16 +1903,20 @@ class ProtocolsManager {
                         const ageGroup = ageGroupMatch[1];
                         
                         // Формируем groupKey в том же формате, что и в PHP
-                        return `1_${classType}_${sex}_${distance}_группа ${ageGroup}`;
+                        const groupKey = `1_${classType}_${sex}_${distance}_группа ${ageGroup}`;
+                        console.log('Сформированный groupKey:', groupKey);
+                        return groupKey;
                     }
                 }
             }
         }
+        console.log('groupKey не найден, возвращаем null');
         return null;
     }
     
     updateTableWithData(table, participants) {
         console.log('Обновляем таблицу данными участников:', participants);
+        console.log('Количество участников:', participants.length);
         
         // Находим tbody в таблице
         const tbody = table.querySelector('tbody');
@@ -1881,6 +1924,8 @@ class ProtocolsManager {
             console.error('tbody не найден в таблице');
             return;
         }
+        
+        console.log('tbody найден, очищаем таблицу');
         
         // Очищаем существующие данные
         tbody.innerHTML = '';
@@ -1905,12 +1950,19 @@ class ProtocolsManager {
     }
     
     createParticipantRow(participant) {
+        console.log('Второй createParticipantRow вызван с данными:', participant);
+        console.log('userid:', participant.userid);
+        console.log('userId:', participant.userId);
+        console.log('fio:', participant.fio);
+        console.log('birthdata:', participant.birthdata);
+        console.log('sportzvanie:', participant.sportzvanie);
+        
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${participant.lane || '-'}</td>
             <td>${participant.userId || participant.userid || '-'}</td>
             <td>${participant.fio || '-'}</td>
-            <td>${participant.birthYear || '-'}</td>
+            <td>${participant.birthYear || participant.birthdata || '-'}</td>
             <td>${participant.ageGroup || '-'}</td>
             <td>${participant.sportzvanie || '-'}</td>
             <td>
@@ -1922,6 +1974,8 @@ class ProtocolsManager {
                 </button>
             </td>
         `;
+        
+        console.log('Создана строка участника:', row.innerHTML);
         return row;
     }
 }
