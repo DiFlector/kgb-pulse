@@ -67,93 +67,73 @@ class ProtocolsManager {
 
         this.loadProtocolsStructure();
         this.bindEvents();
+        
+        // Синхронизируем высоту контейнеров
+        this.syncContainerHeights();
     }
 
     // Обновление отладочной информации
-    updateDebugInfo() {
-        const startContainer = document.getElementById('start-protocols');
-        const finishContainer = document.getElementById('finish-protocols');
-        
-        const debugStartContainer = document.getElementById('debug-start-container');
-        const debugFinishContainer = document.getElementById('debug-finish-container');
-        const debugCssTest = document.getElementById('debug-css-test');
-        
-        if (debugStartContainer) {
-            const startContent = startContainer ? startContainer.innerHTML : 'Не найден';
-            const startLength = startContent.length;
-            debugStartContainer.textContent = `Найден (${startLength} символов)`;
-            console.log('Отладочная информация обновлена для стартовых протоколов:', startLength, 'символов');
-        }
-        
-        if (debugFinishContainer) {
-            const finishContent = finishContainer ? finishContainer.innerHTML : 'Не найден';
-            const finishLength = finishContent.length;
-            debugFinishContainer.textContent = `Найден (${finishLength} символов)`;
-            console.log('Отладочная информация обновлена для финишных протоколов:', finishLength, 'символов');
-        }
-        
-        // Проверяем CSS стили
-        if (debugCssTest && startContainer && finishContainer) {
-            const startStyle = window.getComputedStyle(startContainer);
-            const finishStyle = window.getComputedStyle(finishContainer);
-            
-            // Проверяем родительские контейнеры
-            const startParent = startContainer.parentElement;
-            const finishParent = finishContainer.parentElement;
-            const startParentStyle = startParent ? window.getComputedStyle(startParent) : null;
-            const finishParentStyle = finishParent ? window.getComputedStyle(finishParent) : null;
-            
-            const cssInfo = {
-                start: {
-                    display: startStyle.display,
-                    visibility: startStyle.visibility,
-                    opacity: startStyle.opacity,
-                    height: startStyle.height,
-                    overflow: startStyle.overflow
-                },
-                finish: {
-                    display: finishStyle.display,
-                    visibility: finishStyle.visibility,
-                    opacity: finishStyle.opacity,
-                    height: finishStyle.height,
-                    overflow: finishStyle.overflow
-                },
-                startParent: startParentStyle ? {
-                    display: startParentStyle.display,
-                    visibility: startParentStyle.visibility,
-                    opacity: startParentStyle.opacity,
-                    height: startParentStyle.height
-                } : null,
-                finishParent: finishParentStyle ? {
-                    display: finishParentStyle.display,
-                    visibility: finishParentStyle.visibility,
-                    opacity: finishParentStyle.opacity,
-                    height: finishParentStyle.height
-                } : null
-            };
-            
-            debugCssTest.textContent = `Стартовые: ${cssInfo.start.display}, ${cssInfo.start.visibility}, ${cssInfo.start.opacity} | Финишные: ${cssInfo.finish.display}, ${cssInfo.finish.visibility}, ${cssInfo.finish.opacity}`;
-            console.log('CSS стили контейнеров:', cssInfo);
-        }
-    }
 
-    // Получение правильного названия класса лодки
+
+    // Получение правильного названия класса лодки (используем описания из helpers.php)
     getBoatClassName(boatClass) {
         const boatNames = {
-            'D-10': 'Драконы (D-10)',
-            'K-1': 'Байдарка-одиночка (K-1)',
-            'K-2': 'Байдарка-двойка (K-2)',
-            'K-4': 'Байдарка-четверка (K-4)',
-            'C-1': 'Каноэ-одиночка (C-1)',
-            'C-2': 'Каноэ-двойка (C-2)',
-            'C-4': 'Каноэ-четверка (C-4)',
-            'HD-1': 'Специальная лодка (HD-1)',
-            'OD-1': 'Специальная лодка (OD-1)',
-            'OD-2': 'Специальная лодка (OD-2)',
-            'OC-1': 'Специальная лодка (OC-1)'
+            'D-10': 'Дракон (10 человек)',
+            'K-1': 'Байдарка одиночка',
+            'C-1': 'Каноэ одиночка',
+            'K-2': 'Байдарка двойка',
+            'C-2': 'Каноэ двойка',
+            'K-4': 'Байдарка четверка',
+            'C-4': 'Каноэ четверка',
+            'H-1': 'Жесткие доски одиночка',
+            'H-2': 'Жесткие доски двойка',
+            'H-4': 'Жесткие доски четверка',
+            'O-1': 'Надувные доски одиночка',
+            'O-2': 'Надувные доски двойка',
+            'O-4': 'Надувные доски четверка',
+            'HD-1': 'Жесткая доска (1 человек)',
+            'OD-1': 'Надувная доска (1 человек)',
+            'OD-2': 'Надувная доска (2 человека)',
+            'OC-1': 'Аутригер (1 человек)'
         };
         
         return boatNames[boatClass] || boatClass;
+    }
+    
+    // Синхронизация высоты контейнеров протоколов
+    syncContainerHeights() {
+        const startContainer = document.getElementById('start-protocols');
+        const finishContainer = document.getElementById('finish-protocols');
+        
+        if (!startContainer || !finishContainer) {
+            return;
+        }
+        
+        // Функция для установки одинаковой высоты
+        const setEqualHeight = () => {
+            const startHeight = startContainer.scrollHeight;
+            const finishHeight = finishContainer.scrollHeight;
+            const maxHeight = Math.max(startHeight, finishHeight, 600); // Минимальная высота 600px
+            
+            startContainer.style.minHeight = maxHeight + 'px';
+            finishContainer.style.minHeight = maxHeight + 'px';
+        };
+        
+        // Устанавливаем высоту сразу
+        setEqualHeight();
+        
+        // Устанавливаем высоту после загрузки контента
+        setTimeout(setEqualHeight, 100);
+        setTimeout(setEqualHeight, 500);
+        setTimeout(setEqualHeight, 1000);
+        
+        // Слушаем изменения размера окна
+        window.addEventListener('resize', setEqualHeight);
+        
+        // Слушаем изменения в контейнерах
+        const observer = new MutationObserver(setEqualHeight);
+        observer.observe(startContainer, { childList: true, subtree: true });
+        observer.observe(finishContainer, { childList: true, subtree: true });
     }
 
     // Привязка событий
@@ -275,146 +255,282 @@ class ProtocolsManager {
 
             const data = await response.json();
             console.log('Ответ от API:', data);
-            console.log('Успех:', data.success);
-            console.log('Структура получена:', data.structure);
-            console.log('Количество протоколов:', data.totalProtocols);
-            console.log('Количество дисциплин:', data.totalDisciplines);
             
             if (data.success) {
-                console.log('Структура получена успешно, отрисовываем...');
-                this.renderProtocolsStructure(data.structure);
-                console.log('Структура отрисована, загружаем данные...');
-                this.loadExistingData();
+                this.displayProtocolsStructure(data.protocols);
             } else {
-                console.error('Ошибка API:', data.message);
-                this.showError('Ошибка загрузки структуры: ' + data.message);
+                console.error('Ошибка загрузки структуры протоколов:', data.message);
+                this.showError('Ошибка загрузки структуры протоколов: ' + data.message);
             }
         } catch (error) {
-            console.error('Ошибка загрузки структуры:', error);
+            console.error('Ошибка загрузки структуры протоколов:', error);
             this.showError('Ошибка загрузки структуры протоколов');
         }
     }
 
-    // Отрисовка структуры протоколов
-    renderProtocolsStructure(structure) {
-        console.log('renderProtocolsStructure вызвана с структурой:', structure);
-        console.log('Тип структуры:', typeof structure);
-        console.log('Длина структуры:', structure ? structure.length : 'undefined');
-        
-        const startContainer = document.getElementById('start-protocols');
-        const finishContainer = document.getElementById('finish-protocols');
-        
-        console.log('Найдены контейнеры:', {
-            startContainer: !!startContainer,
-            finishContainer: !!finishContainer,
-            startContainerId: startContainer ? startContainer.id : 'не найден',
-            finishContainerId: finishContainer ? finishContainer.id : 'не найден'
+    // Отображение структуры протоколов с дорожками
+    displayProtocolsStructure(protocols) {
+        const container = document.getElementById('protocols-container');
+        if (!container) return;
+
+        container.innerHTML = '';
+
+        // Определяем правильный порядок лодок
+        const boatOrder = {
+            'D-10': 1,
+            'K-1': 2,
+            'C-1': 3,
+            'K-2': 4,
+            'C-2': 5,
+            'K-4': 6,
+            'C-4': 7,
+            'HD-1': 8,
+            'OD-1': 9,
+            'OD-2': 10,
+            'OC-1': 11
+        };
+
+        // Сортируем протоколы по правильному порядку
+        const sortedProtocols = [...protocols].sort((a, b) => {
+            const orderA = boatOrder[a.discipline] || 999;
+            const orderB = boatOrder[b.discipline] || 999;
+            return orderA - orderB;
         });
 
-        if (!startContainer || !finishContainer) {
-            console.error('Контейнеры не найдены!');
-            console.log('Все элементы с id, содержащими "protocols":', 
-                Array.from(document.querySelectorAll('[id*="protocols"]')).map(el => el.id));
+        sortedProtocols.forEach((protocol, protocolIndex) => {
+            const protocolCard = document.createElement('div');
+            protocolCard.className = 'card mb-3 protocol-card';
+            protocolCard.dataset.protocolId = protocolIndex;
+            protocolCard.dataset.discipline = protocol.discipline;
+            protocolCard.dataset.maxLanes = protocol.discipline === 'D-10' ? '6' : '9';
+
+            let cardHtml = `
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        ${protocol.discipline} - ${protocol.sex} - ${protocol.distance}
+                        <span class="badge bg-info ms-2">Макс дорожек: ${protocol.discipline === 'D-10' ? '6' : '9'}</span>
+                    </h5>
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-outline-primary" onclick="protocolsManager.conductDraw(${protocolIndex})">
+                            <i class="fas fa-random"></i> Жеребьевка
+                        </button>
+                        <button class="btn btn-sm btn-outline-success" onclick="protocolsManager.exportProtocol(${protocolIndex})">
+                            <i class="fas fa-download"></i> Экспорт
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+            `;
+
+            protocol.ageGroups.forEach((ageGroup, groupIndex) => {
+                cardHtml += `
+                    <div class="age-group mb-3" data-group-key="${ageGroup.redisKey}">
+                        <h6 class="text-primary">${ageGroup.name}</h6>
+                        <div class="participants-list">
+                `;
+
+                if (ageGroup.participants && ageGroup.participants.length > 0) {
+                    // Сортируем участников по дорожкам
+                    const sortedParticipants = [...ageGroup.participants].sort((a, b) => (a.lane || 0) - (b.lane || 0));
+                    
+                    sortedParticipants.forEach((participant, participantIndex) => {
+                        const laneClass = participant.laneModified ? 'border-warning' : '';
+                        cardHtml += `
+                            <div class="participant-row border rounded p-2 mb-2 ${laneClass}" data-user-id="${participant.userId}">
+                                <div class="row align-items-center">
+                                    <div class="col-md-1">
+                                        <span class="position-number fw-bold">${participantIndex + 1}</span>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <span class="participant-name">${participant.fio}</span>
+                                        ${participant.teamName ? `<br><small class="text-muted">${participant.teamName}</small>` : ''}
+                                    </div>
+                                    <div class="col-md-2">
+                                        <input type="number" class="form-control form-control-sm lane-input" 
+                                               placeholder="Дорожка" min="1" max="${protocol.discipline === 'D-10' ? '6' : '9'}" 
+                                               value="${participant.lane || ''}" 
+                                               data-original-lane="${participant.lane || ''}"
+                                               onchange="protocolsManager.updateLane(this, ${participant.userId}, '${ageGroup.redisKey}')">
+                                        ${participant.laneModified ? '<small class="text-warning">Изменено</small>' : ''}
+                                    </div>
+                                    <div class="col-md-2">
+                                        <input type="time" class="form-control form-control-sm start-time-input" step="1" placeholder="Старт">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <input type="time" class="form-control form-control-sm finish-time-input" step="1" placeholder="Финиш">
+                                    </div>
+                                    <div class="col-md-1">
+                                        <input type="number" class="form-control form-control-sm place-input" placeholder="Место" min="1">
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                } else {
+                    cardHtml += '<p class="text-muted">Нет участников в этой группе</p>';
+                }
+
+                cardHtml += `
+                        </div>
+                        <div class="mt-2">
+                            <small class="text-muted">Участников: ${ageGroup.participants ? ageGroup.participants.length : 0}</small>
+                            ${ageGroup.drawConducted ? `<span class="badge bg-success ms-2">Жеребьевка проведена</span>` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+
+            cardHtml += `
+                </div>
+            </div>
+            `;
+
+            protocolCard.innerHTML = cardHtml;
+            container.appendChild(protocolCard);
+        });
+    }
+
+    // Обновление дорожки участника
+    async updateLane(input, userId, groupKey) {
+        const newLane = parseInt(input.value);
+        const originalLane = parseInt(input.dataset.originalLane) || 0;
+        const maxLanes = parseInt(input.max);
+        
+        // Проверяем валидность введенного значения
+        if (newLane < 1 || newLane > maxLanes) {
+            this.showError(`Номер дорожки должен быть от 1 до ${maxLanes}`);
+            input.value = originalLane;
             return;
         }
-
-        // Простой тест отображения
-        console.log('=== ТЕСТ ОТОБРАЖЕНИЯ ===');
-        startContainer.innerHTML = '<div class="alert alert-success">Тест отображения - стартовые протоколы работают!</div>';
-        finishContainer.innerHTML = '<div class="alert alert-success">Тест отображения - финишные протоколы работают!</div>';
-        console.log('Тест отображения выполнен');
         
-        // Обновляем отладочную информацию
-        this.updateDebugInfo();
+        // Если дорожка не изменилась, ничего не делаем
+        if (newLane === originalLane) {
+            return;
+        }
         
-        // Ждем 2 секунды и затем загружаем реальные данные
-        setTimeout(() => {
-            if (startContainer) {
-                console.log('Генерируем HTML для стартовых протоколов...');
-                const startHTML = this.generateProtocolsHTML(structure, 'start');
-                console.log('HTML для стартовых протоколов (первые 500 символов):', startHTML.substring(0, 500));
+        try {
+            const response = await fetch('/lks/php/secretary/update_lane.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    meroId: this.currentMeroId,
+                    groupKey: groupKey,
+                    userId: userId,
+                    newLane: newLane
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                // Обновляем оригинальное значение
+                input.dataset.originalLane = newLane;
                 
-                // Простой тест вставки
-                console.log('Длина HTML для вставки:', startHTML.length);
-                console.log('Содержимое контейнера до вставки:', startContainer.innerHTML.substring(0, 200));
+                // Показываем уведомление об успехе
+                this.showSuccess(data.message);
                 
-                startContainer.innerHTML = startHTML;
-                console.log('Стартовые протоколы отрисованы');
-                console.log('Проверка вставки HTML - длина контейнера после вставки:', startContainer.innerHTML.length);
-                console.log('Содержимое контейнера после вставки:', startContainer.innerHTML.substring(0, 200));
-                
-                // Проверяем видимость контейнера
-                const startContainerStyle = window.getComputedStyle(startContainer);
-                console.log('Стили стартового контейнера:', {
-                    display: startContainerStyle.display,
-                    visibility: startContainerStyle.visibility,
-                    opacity: startContainerStyle.opacity,
-                    height: startContainerStyle.height,
-                    width: startContainerStyle.width
-                });
-                
-                // Проверяем прокрутку и видимость
-                console.log('=== ПРОВЕРКА ПРОКРУТКИ ===');
-                console.log('Высота контейнера стартовых протоколов:', startContainer.offsetHeight, 'px');
-                console.log('Высота родительского элемента:', startContainer.parentElement.offsetHeight, 'px');
-                console.log('Прокрутка родительского элемента:', startContainer.parentElement.scrollTop, 'px');
-                console.log('Максимальная прокрутка:', startContainer.parentElement.scrollHeight - startContainer.parentElement.clientHeight, 'px');
-                
-                // Проверяем, есть ли элементы внутри контейнера
-                const startElements = startContainer.querySelectorAll('.protocol-group');
-                console.log('Количество групп протоколов в стартовом контейнере:', startElements.length);
-                if (startElements.length > 0) {
-                    console.log('Первая группа протоколов:', startElements[0].outerHTML.substring(0, 200));
+                // Отмечаем что есть изменения в протоколе
+                const protocolCard = input.closest('.protocol-card');
+                if (protocolCard) {
+                    protocolCard.dataset.hasChanges = 'true';
                 }
                 
-                // Принудительно обновляем отладочную информацию
-                setTimeout(() => {
-                    this.updateDebugInfo();
-                }, 100);
+                // Обновляем визуальное отображение
+                const participantRow = input.closest('.participant-row');
+                if (participantRow) {
+                    participantRow.classList.add('border-warning');
+                    const modifiedIndicator = participantRow.querySelector('.text-warning');
+                    if (!modifiedIndicator) {
+                        input.parentNode.innerHTML += '<small class="text-warning">Изменено</small>';
+                    }
+                }
+            } else {
+                // Возвращаем исходное значение при ошибке
+                input.value = originalLane;
+                this.showError(data.message);
             }
+        } catch (error) {
+            console.error('Ошибка обновления дорожки:', error);
+            input.value = originalLane;
+            this.showError('Ошибка обновления дорожки');
+        }
+    }
 
-            if (finishContainer) {
-                console.log('Генерируем HTML для финишных протоколов...');
-                const finishHTML = this.generateProtocolsHTML(structure, 'finish');
-                console.log('HTML для финишных протоколов (первые 500 символов):', finishHTML.substring(0, 500));
-                finishContainer.innerHTML = finishHTML;
-                console.log('Финишные протоколы отрисованы');
-                console.log('Проверка вставки HTML - длина контейнера после вставки:', finishContainer.innerHTML.length);
-                
-                // Проверяем видимость контейнера
-                const finishContainerStyle = window.getComputedStyle(finishContainer);
-                console.log('Стили финишного контейнера:', {
-                    display: finishContainerStyle.display,
-                    visibility: finishContainerStyle.visibility,
-                    opacity: finishContainerStyle.opacity,
-                    height: finishContainerStyle.height,
-                    width: finishContainerStyle.width
-                });
-                
-                // Проверяем прокрутку и видимость для финишных протоколов
-                console.log('=== ПРОВЕРКА ПРОКРУТКИ ФИНИШНЫХ ===');
-                console.log('Высота контейнера финишных протоколов:', finishContainer.offsetHeight, 'px');
-                console.log('Высота родительского элемента:', finishContainer.parentElement.offsetHeight, 'px');
-                console.log('Прокрутка родительского элемента:', finishContainer.parentElement.scrollTop, 'px');
-                console.log('Максимальная прокрутка:', finishContainer.parentElement.scrollHeight - finishContainer.parentElement.clientHeight, 'px');
-                
-                // Проверяем, есть ли элементы внутри контейнера финишных протоколов
-                const finishElements = finishContainer.querySelectorAll('.protocol-group');
-                console.log('Количество групп протоколов в финишном контейнере:', finishElements.length);
-                if (finishElements.length > 0) {
-                    console.log('Первая группа финишных протоколов:', finishElements[0].outerHTML.substring(0, 200));
-                }
-                
-                // Принудительно обновляем отладочную информацию
-                setTimeout(() => {
-                    this.updateDebugInfo();
-                }, 100);
+    // Проведение жеребьевки для конкретного протокола
+    async conductDraw(protocolIndex) {
+        try {
+            // Получаем выбранные дисциплины
+            const selectedDisciplines = this.getSelectedDisciplines();
+            
+            if (selectedDisciplines.length === 0) {
+                this.showError('Выберите хотя бы одну дисциплину для жеребьевки');
+                return;
             }
             
-            // Обновляем отладочную информацию
-            this.updateDebugInfo();
-            console.log('renderProtocolsStructure завершена');
-        }, 2000);
+            const response = await fetch('/lks/php/secretary/conduct_draw_api.php?action=conduct_draw', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    mero_id: this.currentMeroId,
+                    disciplines: selectedDisciplines
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                this.showSuccess('Жеребьевка проведена успешно');
+                
+                // Обновляем данные протоколов в памяти
+                if (data.results) {
+                    this.protocolsData = data.results;
+                }
+                
+                // Перезагружаем структуру протоколов для отображения обновленных данных
+                await this.loadProtocolsStructure();
+            } else {
+                this.showError('Ошибка проведения жеребьевки: ' + data.message);
+            }
+        } catch (error) {
+            console.error('Ошибка проведения жеребьевки:', error);
+            this.showError('Ошибка проведения жеребьевки');
+        }
+    }
+
+    // Показ уведомлений об успехе
+    showSuccess(message) {
+        this.showNotification(message, 'success');
+    }
+
+    // Показ уведомлений об ошибке
+    showError(message) {
+        this.showNotification(message, 'error');
+    }
+
+    // Показ уведомлений
+    showNotification(message, type = 'info') {
+        // Создаем элемент уведомления
+        const notification = document.createElement('div');
+        notification.className = `alert alert-${type === 'error' ? 'danger' : type} alert-dismissible fade show position-fixed`;
+        notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+        notification.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        // Добавляем уведомление на страницу
+        document.body.appendChild(notification);
+        
+        // Автоматически удаляем через 5 секунд
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.remove();
+            }
+        }, 5000);
     }
 
     // Генерация HTML для протоколов
@@ -449,8 +565,8 @@ class ProtocolsManager {
         
         console.log('Сгруппированные дисциплины:', groupedByClass);
         
-        // Сортируем классы лодок в правильном порядке
-        const boatClassOrder = ['K-1', 'K-2', 'K-4', 'C-1', 'C-2', 'C-4', 'D-10', 'HD-1', 'OD-1', 'OD-2', 'OC-1'];
+        // Сортируем классы лодок в правильном порядке (используем порядок из helpers.php)
+        const boatClassOrder = ['D-10', 'K-1', 'C-1', 'K-2', 'C-2', 'K-4', 'C-4', 'H-1', 'H-2', 'H-4', 'O-1', 'O-2', 'O-4', 'HD-1', 'OD-1', 'OD-2', 'OC-1'];
         const sortedClasses = Object.keys(groupedByClass).sort((a, b) => {
             const indexA = boatClassOrder.indexOf(a);
             const indexB = boatClassOrder.indexOf(b);
@@ -577,11 +693,23 @@ class ProtocolsManager {
                                 html += `</tbody>`;
                                 html += `</table>`;
                                 
-                                // Кнопка добавления участника только для стартовых протоколов
+                                // Кнопки добавления участника и скачивания протокола на одной строке
                                 if (type === 'start') {
-                                    html += `<div class="mt-2">`;
-                                    html += `<button class="btn btn-sm btn-outline-primary add-participant-btn" data-group-key="${groupKey}">`;
+                                    // Для стартовых протоколов: зеленая кнопка добавления + зеленая кнопка скачивания
+                                    html += `<div class="mt-2 d-flex gap-2">`;
+                                    html += `<button class="btn btn-sm btn-success add-participant-btn" data-group-key="${groupKey}">`;
                                     html += `<i class="fas fa-user-plus"></i> Добавить участника`;
+                                    html += `</button>`;
+                                    
+                                    html += `<button class="btn btn-sm btn-outline-success download-protocol-btn" data-group-key="${groupKey}" data-protocol-type="${type}">`;
+                                    html += `<i class="fas fa-download"></i> Скачать протокол`;
+                                    html += `</button>`;
+                                    html += `</div>`;
+                                } else {
+                                    // Для финишных протоколов: синяя кнопка скачивания
+                                    html += `<div class="mt-2">`;
+                                    html += `<button class="btn btn-sm btn-outline-primary download-protocol-btn" data-group-key="${groupKey}" data-protocol-type="${type}">`;
+                                    html += `<i class="fas fa-download"></i> Скачать протокол`;
                                     html += `</button>`;
                                     html += `</div>`;
                                 }
@@ -818,50 +946,6 @@ class ProtocolsManager {
         }
     }
 
-    // Проведение жеребьевки
-    async conductDraw() {
-        const button = document.getElementById('conduct-draw-btn');
-        if (button) {
-            button.disabled = true;
-            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Проводится жеребьевка...';
-        }
-
-        try {
-            console.log('Начинаем жеребьевку для мероприятия:', this.currentMeroId);
-            
-            const response = await fetch('/lks/php/secretary/conduct_draw.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    meroId: this.currentMeroId
-                })
-            });
-
-            const data = await response.json();
-            console.log('Ответ от API жеребьевки:', data);
-            
-            if (data.success) {
-                console.log('Жеребьевка успешна, получены данные:', data);
-                // Загружаем актуальные данные из get_protocols_data.php
-                await this.loadExistingData();
-                this.showSuccess('Жеребьевка проведена успешно!');
-            } else {
-                console.error('Ошибка жеребьевки:', data.message);
-                this.showError('Ошибка проведения жеребьевки: ' + data.message);
-            }
-        } catch (error) {
-            console.error('Ошибка жеребьевки:', error);
-            this.showError('Ошибка проведения жеребьевки');
-        } finally {
-            if (button) {
-                button.disabled = false;
-                button.innerHTML = '<i class="fas fa-random"></i> Жеребьевка';
-            }
-        }
-    }
-
     // Отрисовка данных протоколов
     renderProtocolsData() {
         // Проверяем все tbody на странице
@@ -954,7 +1038,7 @@ class ProtocolsManager {
     createParticipantRow(participant, number, groupKey) {
         const row = document.createElement('tr');
         row.className = 'participant-row';
-        row.dataset.participantId = participant.id;
+        row.dataset.participantId = participant.userId || participant.userid; // Используем userId
         row.dataset.groupKey = groupKey;
         
         // Определяем тип протокола и является ли это драконами
@@ -967,37 +1051,37 @@ class ProtocolsManager {
         if (type === 'start') {
             // Стартовый протокол
             cells = `
-                <td class="edit-field" data-field="water" data-participant-id="${participant.id}">${participant.water || ''}</td>
-                <td>${participant.userid || ''}</td>
-                <td class="edit-field" data-field="fio" data-participant-id="${participant.id}">${participant.fio || ''}</td>
+                <td class="edit-field" data-field="water" data-participant-id="${participant.userId || participant.userid}">${participant.water || ''}</td>
+                <td>${participant.userId || participant.userid || ''}</td>
+                <td class="edit-field" data-field="fio" data-participant-id="${participant.userId || participant.userid}">${participant.fio || ''}</td>
                 <td>${participant.birthdata || ''}</td>
                 <td>${participant.ageGroup || ''}</td>
-                <td class="edit-field" data-field="sportzvanie" data-participant-id="${participant.id}">${participant.sportzvanie || ''}</td>
+                <td class="edit-field" data-field="sportzvanie" data-participant-id="${participant.userId || participant.userid}">${participant.sportzvanie || ''}</td>
             `;
             
             if (isDragonProtocol) {
                 cells += `
-                    <td class="edit-field" data-field="teamCity" data-participant-id="${participant.id}">${participant.teamCity || ''}</td>
-                    <td class="edit-field" data-field="teamName" data-participant-id="${participant.id}">${participant.teamName || ''}</td>
+                    <td class="edit-field" data-field="teamCity" data-participant-id="${participant.userId || participant.userid}">${participant.teamCity || ''}</td>
+                    <td class="edit-field" data-field="teamName" data-participant-id="${participant.userId || participant.userid}">${participant.teamName || ''}</td>
                 `;
             }
         } else {
             // Финишный протокол
             cells = `
-                <td class="edit-field" data-field="place" data-participant-id="${participant.id}">${participant.place || ''}</td>
-                <td class="edit-field" data-field="finishTime" data-participant-id="${participant.id}">${participant.finishTime || ''}</td>
-                <td class="edit-field" data-field="water" data-participant-id="${participant.id}">${participant.water || ''}</td>
-                <td>${participant.userid || ''}</td>
-                <td class="edit-field" data-field="fio" data-participant-id="${participant.id}">${participant.fio || ''}</td>
+                <td class="edit-field" data-field="place" data-participant-id="${participant.userId || participant.userid}">${participant.place || ''}</td>
+                <td class="edit-field" data-field="finishTime" data-participant-id="${participant.userId || participant.userid}">${participant.finishTime || ''}</td>
+                <td class="edit-field" data-field="water" data-participant-id="${participant.userId || participant.userid}">${participant.water || ''}</td>
+                <td>${participant.userId || participant.userid || ''}</td>
+                <td class="edit-field" data-field="fio" data-participant-id="${participant.userId || participant.userid}">${participant.fio || ''}</td>
                 <td>${participant.birthdata || ''}</td>
                 <td>${participant.ageGroup || ''}</td>
-                <td class="edit-field" data-field="sportzvanie" data-participant-id="${participant.id}">${participant.sportzvanie || ''}</td>
+                <td class="edit-field" data-field="sportzvanie" data-participant-id="${participant.userId || participant.userid}">${participant.sportzvanie || ''}</td>
             `;
             
             if (isDragonProtocol) {
                 cells += `
-                    <td class="edit-field" data-field="teamCity" data-participant-id="${participant.id}">${participant.teamCity || ''}</td>
-                    <td class="edit-field" data-field="teamName" data-participant-id="${participant.id}">${participant.teamName || ''}</td>
+                    <td class="edit-field" data-field="teamCity" data-participant-id="${participant.userId || participant.userid}">${participant.teamCity || ''}</td>
+                    <td class="edit-field" data-field="teamName" data-participant-id="${participant.userId || participant.userid}">${participant.teamName || ''}</td>
                 `;
             }
         }
@@ -1005,7 +1089,7 @@ class ProtocolsManager {
         // Добавляем кнопку действий
         cells += `
             <td>
-                <button class="btn btn-sm btn-outline-danger" data-participant-id="${participant.id}" data-group-key="${groupKey}">
+                <button class="btn btn-sm btn-outline-danger" data-participant-id="${participant.userId || participant.userid}" data-group-key="${groupKey}">
                     <i class="fas fa-trash"></i>
                 </button>
             </td>
@@ -1021,7 +1105,7 @@ class ProtocolsManager {
         
         const currentValue = element.textContent.trim();
         const field = element.dataset.field;
-        const participantId = element.dataset.participantId;
+        const participantUserId = element.dataset.participantId; // Используем userId
         
         element.classList.add('editing');
         element.contentEditable = true;
@@ -1039,7 +1123,7 @@ class ProtocolsManager {
     async saveFieldValue(element) {
         const newValue = element.textContent.trim();
         const field = element.dataset.field;
-        const participantId = element.dataset.participantId;
+        const participantUserId = element.dataset.participantId; // Используем userId для API
         const groupKey = element.closest('tr').dataset.groupKey;
         
         element.classList.remove('editing');
@@ -1054,7 +1138,7 @@ class ProtocolsManager {
                 body: JSON.stringify({
                     meroId: this.currentMeroId,
                     groupKey: groupKey,
-                    participantId: participantId,
+                    participantUserId: participantUserId, // Исправлено: participantUserId вместо participantId
                     field: field,
                     value: newValue
                 })
@@ -1066,7 +1150,7 @@ class ProtocolsManager {
                 // Обновляем данные в памяти
                 const participants = this.getParticipantsFromGroup(groupKey);
                 if (participants) {
-                    const participant = participants.find(p => p.id == participantId); // Используем == для сравнения с учетом типов
+                    const participant = participants.find(p => p.userId == participantUserId); // Используем userId для поиска
                     if (participant) {
                         participant[field] = newValue;
                     }
@@ -1074,24 +1158,24 @@ class ProtocolsManager {
             } else {
                 this.showError('Ошибка сохранения: ' + data.message);
                 // Возвращаем старое значение
-                element.textContent = this.getParticipantValue(participantId, groupKey, field);
+                element.textContent = this.getParticipantValue(participantUserId, groupKey, field);
             }
         } catch (error) {
             console.error('Ошибка сохранения:', error);
             this.showError('Ошибка сохранения данных');
-            element.textContent = this.getParticipantValue(participantId, groupKey, field);
+            element.textContent = this.getParticipantValue(participantUserId, groupKey, field);
         }
     }
 
     // Отмена редактирования
     cancelEdit(element) {
         const field = element.dataset.field;
-        const participantId = element.dataset.participantId;
+        const participantUserId = element.dataset.participantId; // Используем userId
         const groupKey = element.closest('tr').dataset.groupKey;
         
         element.classList.remove('editing');
         element.contentEditable = false;
-        element.textContent = this.getParticipantValue(participantId, groupKey, field);
+        element.textContent = this.getParticipantValue(participantUserId, groupKey, field);
     }
 
     // Получение участников из группы с учетом разных структур данных
@@ -1118,13 +1202,13 @@ class ProtocolsManager {
     }
 
     // Получение значения участника
-    getParticipantValue(participantId, groupKey, field) {
+    getParticipantValue(participantUserId, groupKey, field) {
         const participants = this.getParticipantsFromGroup(groupKey);
         if (!participants) {
             return '';
         }
 
-        const participant = participants.find(p => p.id == participantId); // Используем == для сравнения с учетом типов
+        const participant = participants.find(p => p.userId == participantUserId); // Используем userId вместо id
         if (participant) {
             return participant[field] || '';
         }
@@ -1132,7 +1216,7 @@ class ProtocolsManager {
     }
 
     // Удаление участника
-    async removeParticipant(participantId, groupKey) {
+    async removeParticipant(participantUserId, groupKey) {
         if (!confirm('Вы уверены, что хотите удалить этого участника?')) {
             return;
         }
@@ -1152,7 +1236,7 @@ class ProtocolsManager {
                 },
                 body: JSON.stringify({
                     meroId: this.currentMeroId,
-                    participantId: participantId,
+                    participantUserId: participantUserId, // Исправлено: participantUserId вместо participantId
                     groupKey: groupKey
                 })
             });
@@ -1164,7 +1248,7 @@ class ProtocolsManager {
                 const participants = this.getParticipantsFromGroup(groupKey);
                 
                 if (participants) {
-                    const index = participants.findIndex(p => p.id == participantId);
+                    const index = participants.findIndex(p => p.userId == participantUserId); // Используем userId
                     
                     if (index !== -1) {
                         participants.splice(index, 1);
@@ -1238,35 +1322,34 @@ class ProtocolsManager {
 
     // Отображение результатов поиска
     displaySearchResults(participants) {
-        const resultsContainer = document.getElementById('searchResults');
+        const searchResults = document.getElementById('searchResults');
+        const participantsList = document.getElementById('participantsList');
         
         if (!participants || participants.length === 0) {
-            resultsContainer.innerHTML = '<div class="alert alert-info">Участники не найдены</div>';
+            participantsList.innerHTML = '<div class="text-center text-muted p-3">Участники не найдены</div>';
+            searchResults.style.display = 'block';
             return;
         }
 
-        let html = '<div class="list-group">';
+        let html = '';
         participants.forEach(participant => {
             html += `
-                <div class="list-group-item list-group-item-action">
+                <div class="list-group-item list-group-item-action" onclick="protocolsManager.selectParticipant(${participant.userId || participant.userid}, '${participant.fio}', '${participant.sex}', ${participant.age})">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <h6 class="mb-1">${participant.fio}</h6>
-                            <small class="text-muted">
-                                Номер: ${participant.userid} | Email: ${participant.email} | 
-                                Возраст: ${participant.age} | Разряд: ${participant.sportzvanie}
-                            </small>
+                            <strong>№${participant.userId || participant.userid}</strong> - ${participant.fio}
                         </div>
-                        <button class="btn btn-sm btn-primary" onclick="protocolsManager.addParticipantToGroup('${participant.oid}', '${participant.userid}')">
-                            <i class="fas fa-plus"></i> Добавить
-                        </button>
+                        <small class="text-muted">${participant.sex}, ${participant.age} лет</small>
                     </div>
+                    <small class="text-muted">
+                        ${participant.birthdata} | ${participant.sportzvanie} | ${participant.city || 'Не указан'}
+                    </small>
                 </div>
             `;
         });
-        html += '</div>';
         
-        resultsContainer.innerHTML = html;
+        participantsList.innerHTML = html;
+        searchResults.style.display = 'block';
     }
 
     // Регистрация нового участника
@@ -1302,7 +1385,7 @@ class ProtocolsManager {
                 this.showSuccess('Участник успешно зарегистрирован');
                 
                 // Автоматически добавляем участника в группу
-                await this.addParticipantToGroup(data.participant.oid, data.participant.userid);
+                await this.addParticipantToGroup(data.participant.oid, data.participant.userId || data.participant.userid);
                 
                 // Закрываем модальное окно
                 const modal = bootstrap.Modal.getInstance(document.getElementById('addParticipantModal'));
@@ -1320,7 +1403,7 @@ class ProtocolsManager {
     }
 
     // Добавление участника в группу
-    async addParticipantToGroup(participantOid, participantUserid) {
+    async addParticipantToGroup(participantOid, participantUserId) {
         const groupKey = document.getElementById('current-group-key').value;
         if (!groupKey) {
             this.showError('Ошибка: группа не выбрана');
@@ -1335,6 +1418,7 @@ class ProtocolsManager {
                 },
                 body: JSON.stringify({
                     participantOid: participantOid,
+                    participantUserId: participantUserId, // Исправлено: participantUserId вместо participantUserid
                     groupKey: groupKey,
                     meroId: this.currentMeroId
                 })
@@ -1361,7 +1445,7 @@ class ProtocolsManager {
     }
 
     // Перемещение участника между группами
-    async moveParticipant(participantId, fromGroup, toGroup) {
+    async moveParticipant(participantUserId, fromGroup, toGroup) {
         try {
             const response = await fetch('/lks/php/secretary/move_participant.php', {
                 method: 'POST',
@@ -1370,7 +1454,7 @@ class ProtocolsManager {
                 },
                 body: JSON.stringify({
                     meroId: this.currentMeroId,
-                    participantId: participantId,
+                    participantUserId: participantUserId, // Исправлено: participantUserId вместо participantId
                     fromGroup: fromGroup,
                     toGroup: toGroup
                 })
@@ -1448,11 +1532,11 @@ class ProtocolsManager {
         e.preventDefault();
         e.stopPropagation();
         
-        const participantId = e.currentTarget.dataset.participantId;
+        const participantUserId = e.currentTarget.dataset.participantId; // Используем userId
         const groupKey = e.currentTarget.dataset.groupKey;
         
-        if (participantId && groupKey) {
-            this.removeParticipant(participantId, groupKey);
+        if (participantUserId && groupKey) {
+            this.removeParticipant(participantUserId, groupKey);
         }
     }
 
@@ -1644,10 +1728,10 @@ class ProtocolsManager {
         let html = '';
         participants.forEach(participant => {
             html += `
-                <div class="list-group-item list-group-item-action" onclick="protocolsManager.selectParticipant(${participant.userid}, '${participant.fio}', '${participant.sex}', ${participant.age})">
+                <div class="list-group-item list-group-item-action" onclick="protocolsManager.selectParticipant(${participant.userId || participant.userid}, '${participant.fio}', '${participant.sex}', ${participant.age})">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <strong>№${participant.userid}</strong> - ${participant.fio}
+                            <strong>№${participant.userId || participant.userid}</strong> - ${participant.fio}
                         </div>
                         <small class="text-muted">${participant.sex}, ${participant.age} лет</small>
                     </div>
@@ -1824,7 +1908,7 @@ class ProtocolsManager {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${participant.lane || '-'}</td>
-            <td>${participant.userid || '-'}</td>
+            <td>${participant.userId || participant.userid || '-'}</td>
             <td>${participant.fio || '-'}</td>
             <td>${participant.birthYear || '-'}</td>
             <td>${participant.ageGroup || '-'}</td>

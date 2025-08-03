@@ -91,7 +91,9 @@ try {
                     'place' => null,
                     'finishTime' => null,
                     'addedManually' => true,
-                    'addedAt' => date('Y-m-d H:i:s')
+                    'addedAt' => date('Y-m-d H:i:s'),
+                    'discipline' => $protocol['discipline'] ?? '',
+                    'groupKey' => $ageGroup['redisKey'] ?? ''
                 ];
                 
                 $groupFound = true;

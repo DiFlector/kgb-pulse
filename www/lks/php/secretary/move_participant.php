@@ -1,9 +1,17 @@
 <?php
-session_start();
-require_once $_SERVER['DOCUMENT_ROOT'] . '/lks/php/common/Auth.php';
-require_once $_SERVER['DOCUMENT_ROOT'] . '/lks/php/db/Database.php';
+/**
+ * Перемещение участника между группами
+ * Файл: www/lks/php/secretary/move_participant.php
+ */
 
-// Проверка авторизации и прав доступа
+require_once __DIR__ . "/../db/Database.php";
+require_once __DIR__ . "/../common/Auth.php";
+
+if (!defined('TEST_MODE') && session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// Проверка авторизации
 $auth = new Auth();
 if (!$auth->isAuthenticated() || !$auth->hasAnyRole(['Secretary', 'SuperUser', 'Admin'])) {
     http_response_code(403);
@@ -11,164 +19,163 @@ if (!$auth->isAuthenticated() || !$auth->hasAnyRole(['Secretary', 'SuperUser', '
     exit;
 }
 
-// Получение данных из POST запроса
-$input = json_decode(file_get_contents('php://input'), true);
-$meroId = $input['meroId'] ?? null;
-$participantId = $input['participantId'] ?? null;
-$fromGroup = $input['fromGroup'] ?? null;
-$toGroup = $input['toGroup'] ?? null;
-
-if (!$meroId || !$participantId || !$fromGroup || !$toGroup) {
-    echo json_encode(['success' => false, 'message' => 'Не указаны необходимые параметры']);
-    exit;
-}
+header('Content-Type: application/json; charset=utf-8');
 
 try {
-    // Перемещаем участника между группами
-    moveParticipantBetweenGroups($meroId, $participantId, $fromGroup, $toGroup);
-
-    echo json_encode(['success' => true]);
-
-} catch (Exception $e) {
-    error_log("Ошибка перемещения участника: " . $e->getMessage());
-    echo json_encode(['success' => false, 'message' => 'Ошибка сервера: ' . $e->getMessage()]);
-}
-
-/**
- * Перемещение участника между группами
- */
-function moveParticipantBetweenGroups($meroId, $participantId, $fromGroup, $toGroup) {
-    // Получаем данные из исходной группы
-    $fromStartData = getProtocolData($meroId, $fromGroup, 'start');
-    $fromFinishData = getProtocolData($meroId, $fromGroup, 'finish');
+    $input = json_decode(file_get_contents('php://input'), true);
     
-    // Получаем данные в целевую группу
-    $toStartData = getProtocolData($meroId, $toGroup, 'start');
-    $toFinishData = getProtocolData($meroId, $toGroup, 'finish');
+    if (!$input || !isset($input['meroId']) || !isset($input['participantId']) || 
+        !isset($input['fromGroupKey']) || !isset($input['toGroupKey'])) {
+        throw new Exception('Не все параметры указаны');
+    }
     
-    if (!$fromStartData || !$fromFinishData) {
+    $meroId = (int)$input['meroId'];
+    $participantId = (int)$input['participantId'];
+    $fromGroupKey = $input['fromGroupKey'];
+    $toGroupKey = $input['toGroupKey'];
+    
+    if ($meroId <= 0 || $participantId <= 0) {
+        throw new Exception('Неверные параметры');
+    }
+    
+    if ($fromGroupKey === $toGroupKey) {
+        throw new Exception('Участник уже находится в этой группе');
+    }
+    
+    // Подключаемся к Redis
+    $redis = new Redis();
+    try {
+        $redis->connect('redis', 6379);
+    } catch (Exception $e) {
+        error_log("Ошибка подключения к Redis: " . $e->getMessage());
+        throw new Exception('Ошибка подключения к базе данных');
+    }
+    
+    // Получаем данные участника
+    $db = Database::getInstance();
+    $stmt = $db->prepare("
+        SELECT u.oid, u.userid, u.fio, u.sex, u.birthdata, u.sportzvanie, u.city,
+               t.teamname, t.teamcity
+        FROM users u
+        LEFT JOIN listreg lr ON u.oid = lr.users_oid AND lr.meros_oid = ?
+        LEFT JOIN teams t ON lr.teams_oid = t.oid
+        WHERE u.oid = ?
+    ");
+    $stmt->execute([$meroId, $participantId]);
+    $participant = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$participant) {
+        throw new Exception('Участник не найден');
+    }
+    
+    // Загружаем данные протоколов
+    $protocolsDir = __DIR__ . '/../../../files/json/protocols/';
+    $filename = $protocolsDir . "protocols_{$meroId}.json";
+    
+    if (!file_exists($filename)) {
+        throw new Exception('Файл протоколов не найден');
+    }
+    
+    $jsonData = file_get_contents($filename);
+    $protocolsData = json_decode($jsonData, true);
+    
+    if (!$protocolsData) {
+        throw new Exception('Ошибка чтения файла протоколов');
+    }
+    
+    $participantData = null;
+    $fromGroupFound = false;
+    $toGroupFound = false;
+    
+    // Удаляем участника из исходной группы
+    foreach ($protocolsData as &$protocol) {
+        foreach ($protocol['ageGroups'] as &$ageGroup) {
+            if ($ageGroup['redisKey'] === $fromGroupKey) {
+                $fromGroupFound = true;
+                foreach ($ageGroup['participants'] as $index => $p) {
+                    if ($p['userId'] == $participant['userid']) {
+                        $participantData = $p;
+                        unset($ageGroup['participants'][$index]);
+                        $ageGroup['participants'] = array_values($ageGroup['participants']);
+                        break 2;
+                    }
+                }
+            }
+        }
+    }
+    
+    if (!$fromGroupFound) {
         throw new Exception('Исходная группа не найдена');
     }
     
-    if (!$toStartData || !$toFinishData) {
-        throw new Exception('Целевая группа не найдена');
-    }
-
-    // Находим участника в исходной группе
-    $participant = null;
-    $participantIndex = -1;
-    
-    foreach ($fromStartData['participants'] as $index => $p) {
-        if ($p['id'] == $participantId) {
-            $participant = $p;
-            $participantIndex = $index;
-            break;
-        }
-    }
-    
-    if (!$participant) {
+    if (!$participantData) {
         throw new Exception('Участник не найден в исходной группе');
     }
-
-    // Удаляем участника из исходной группы
-    array_splice($fromStartData['participants'], $participantIndex, 1);
-    array_splice($fromFinishData['participants'], $participantIndex, 1);
     
-    // Обновляем номера воды в исходной группе
-    reorderWaterNumbers($fromStartData['participants']);
-    reorderWaterNumbers($fromFinishData['participants']);
-
     // Добавляем участника в целевую группу
-    $participant['waterNumber'] = count($toStartData['participants']) + 1;
-    $toStartData['participants'][] = $participant;
-    
-    // Добавляем в финишный протокол с пустыми результатами
-    $finishParticipant = $participant;
-    $finishParticipant['place'] = '';
-    $finishParticipant['finishTime'] = '';
-    $toFinishData['participants'][] = $finishParticipant;
-
-    // Обновляем время последнего изменения
-    $fromStartData['lastUpdated'] = date('Y-m-d H:i:s');
-    $fromFinishData['lastUpdated'] = date('Y-m-d H:i:s');
-    $toStartData['lastUpdated'] = date('Y-m-d H:i:s');
-    $toFinishData['lastUpdated'] = date('Y-m-d H:i:s');
-
-    // Сохраняем обновленные данные
-    saveProtocolData($meroId, $fromGroup, 'start', $fromStartData);
-    saveProtocolData($meroId, $fromGroup, 'finish', $fromFinishData);
-    saveProtocolData($meroId, $toGroup, 'start', $toStartData);
-    saveProtocolData($meroId, $toGroup, 'finish', $toFinishData);
-}
-
-/**
- * Пересчет номеров воды после удаления участника
- */
-function reorderWaterNumbers(&$participants) {
-    foreach ($participants as $index => &$participant) {
-        $participant['waterNumber'] = $index + 1;
-    }
-}
-
-/**
- * Получение данных протокола из Redis/JSON
- */
-function getProtocolData($meroId, $groupKey, $type) {
-    // Сначала пробуем получить из Redis
-    $redis = new Redis();
-    try {
-        $redis->connect('127.0.0.1', 6379);
-        
-        $redisKey = "protocol:{$meroId}:{$groupKey}:{$type}";
-        $data = $redis->get($redisKey);
-        
-        if ($data) {
-            $protocolData = json_decode($data, true);
-            if ($protocolData) {
-                return $protocolData;
+    foreach ($protocolsData as &$protocol) {
+        foreach ($protocol['ageGroups'] as &$ageGroup) {
+            if ($ageGroup['redisKey'] === $toGroupKey) {
+                $toGroupFound = true;
+                
+                // Проверяем, нет ли уже такого участника
+                foreach ($ageGroup['participants'] as $existingParticipant) {
+                    if ($existingParticipant['userId'] == $participant['userid']) {
+                        throw new Exception('Участник уже находится в целевой группе');
+                    }
+                }
+                
+                // Обновляем данные участника
+                $participantData['addedManually'] = true;
+                $participantData['addedAt'] = date('Y-m-d H:i:s');
+                $participantData['lane'] = null;
+                $participantData['place'] = null;
+                $participantData['finishTime'] = null;
+                
+                $ageGroup['participants'][] = $participantData;
+                break 2;
             }
         }
-    } catch (Exception $e) {
-        error_log("Ошибка подключения к Redis: " . $e->getMessage());
     }
-
-    // Если Redis недоступен или данных нет, пробуем JSON файл
-    $jsonFilePath = $_SERVER['DOCUMENT_ROOT'] . "/lks/files/json/protocols/{$meroId}/{$groupKey}_{$type}.json";
     
-    if (file_exists($jsonFilePath)) {
-        $jsonData = file_get_contents($jsonFilePath);
-        $protocolData = json_decode($jsonData, true);
-        
-        if ($protocolData) {
-            return $protocolData;
+    if (!$toGroupFound) {
+        throw new Exception('Целевая группа не найдена');
+    }
+    
+    // Сохраняем в Redis
+    foreach ($protocolsData as $protocol) {
+        foreach ($protocol['ageGroups'] as $ageGroup) {
+            if ($ageGroup['redisKey'] === $fromGroupKey || $ageGroup['redisKey'] === $toGroupKey) {
+                $redis->setex($ageGroup['redisKey'], 86400, json_encode($ageGroup));
+            }
         }
     }
-
-    return null;
-}
-
-/**
- * Сохранение данных протокола
- */
-function saveProtocolData($meroId, $groupKey, $type, $data) {
-    // Сохраняем в Redis
-    $redis = new Redis();
-    try {
-        $redis->connect('127.0.0.1', 6379);
-        
-        $redisKey = "protocol:{$meroId}:{$groupKey}:{$type}";
-        $redis->setex($redisKey, 86400, json_encode($data)); // TTL 24 часа
-    } catch (Exception $e) {
-        error_log("Ошибка сохранения в Redis: " . $e->getMessage());
-    }
-
-    // Сохраняем в JSON файл
-    $jsonDir = $_SERVER['DOCUMENT_ROOT'] . "/lks/files/json/protocols/{$meroId}";
-    if (!is_dir($jsonDir)) {
-        mkdir($jsonDir, 0755, true);
-    }
     
-    $jsonFilePath = $jsonDir . "/{$groupKey}_{$type}.json";
-    file_put_contents($jsonFilePath, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+    // Сохраняем в JSON файл
+    file_put_contents($filename, json_encode($protocolsData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+    
+    echo json_encode([
+        'success' => true,
+        'message' => 'Участник успешно перемещен',
+        'participant' => [
+            'userId' => $participant['userid'],
+            'fio' => $participant['fio'],
+            'sex' => $participant['sex'],
+            'birthdata' => $participant['birthdata'],
+            'sportzvanie' => $participant['sportzvanie'],
+            'teamName' => $participant['teamname'] ?? '',
+            'teamCity' => $participant['teamcity'] ?? ''
+        ],
+        'fromGroup' => $fromGroupKey,
+        'toGroup' => $toGroupKey
+    ]);
+    
+} catch (Exception $e) {
+    error_log("Ошибка перемещения участника: " . $e->getMessage());
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'message' => $e->getMessage()
+    ]);
 }
 ?> 

@@ -67,7 +67,7 @@ try {
     }
     
     // Проверяем, есть ли регистрации на это мероприятие
-    $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM listreg WHERE champn = ?");
+    $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM listreg l JOIN meros m ON l.meros_oid = m.oid WHERE m.champn = ?");
     $stmt->execute([$eventId]);
     $regCount = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
     
@@ -89,7 +89,7 @@ try {
         
         // Удаляем регистрации на мероприятие
         if ($regCount > 0) {
-            $stmt = $pdo->prepare("DELETE FROM listreg WHERE champn = ?");
+            $stmt = $pdo->prepare("DELETE FROM listreg WHERE meros_oid = (SELECT oid FROM meros WHERE champn = ?)");
             $stmt->execute([$eventId]);
         }
         

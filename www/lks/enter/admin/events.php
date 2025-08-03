@@ -120,7 +120,7 @@ include '../includes/header.php';
                             <td>
                                 <?php
                                 try {
-                                    $regCount = $db->prepare("SELECT COUNT(*) FROM listreg WHERE champn = ?");
+                                    $regCount = $db->prepare("SELECT COUNT(*) FROM listreg l JOIN meros m ON l.meros_oid = m.oid WHERE m.champn = ?");
                                     $regCount->execute([$event['champn']]);
                                     echo '<span class="badge bg-primary">' . $regCount->fetchColumn() . '</span>';
                                 } catch (Exception $e) {

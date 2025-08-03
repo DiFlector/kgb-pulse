@@ -25,7 +25,7 @@ try {
     if ($hasFullAccess) {
         $eventsStmt = $db->prepare("
             SELECT oid, meroname, merodata, status, defcost, class_distance, filepolojenie,
-                   (SELECT COUNT(*) FROM listreg WHERE champn = m.oid) as registrations_count,
+                   (SELECT COUNT(*) FROM listreg l JOIN meros m2 ON l.meros_oid = m2.oid WHERE m2.oid = m.oid) as registrations_count,
                    created_by
             FROM meros m 
             ORDER BY oid DESC
@@ -34,7 +34,7 @@ try {
     } else {
         $eventsStmt = $db->prepare("
             SELECT oid, meroname, merodata, status, defcost, class_distance, filepolojenie,
-                   (SELECT COUNT(*) FROM listreg WHERE champn = m.oid) as registrations_count,
+                   (SELECT COUNT(*) FROM listreg l JOIN meros m2 ON l.meros_oid = m2.oid WHERE m2.oid = m.oid) as registrations_count,
                    created_by
             FROM meros m 
             WHERE created_by = ? 

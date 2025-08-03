@@ -239,7 +239,7 @@ echo "<h3>4. Тестовое отображение протоколов:</h3>"
                 });
                 
                 // Сортируем классы лодок
-                const boatClassOrder = ['K-1', 'K-2', 'K-4', 'C-1', 'C-2', 'C-4', 'D-10', 'HD-1', 'OD-1', 'OD-2', 'OC-1'];
+                const boatClassOrder = ['D-10', 'K-1', 'C-1', 'K-2', 'C-2', 'K-4', 'C-4', 'H-1', 'H-2', 'H-4', 'O-1', 'O-2', 'O-4', 'HD-1', 'OD-1', 'OD-2', 'OC-1'];
                 const sortedClasses = Object.keys(groupedByClass).sort((a, b) => {
                     const indexA = boatClassOrder.indexOf(a);
                     const indexB = boatClassOrder.indexOf(b);

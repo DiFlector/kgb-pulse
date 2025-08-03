@@ -23,7 +23,4 @@
 0 4 * * 0 /var/www/html/scripts/cleanup_logs.sh
 
 # Создание годовых архивов 1 января в 01:00
-0 1 1 1 * /var/www/html/scripts/backup_database.sh --yearly
-
-# Проверка обновлений системы еженедельно в субботу в 06:00
-0 6 * * 6 php /var/www/html/scripts/check_updates.php 
+0 1 1 1 * /var/www/html/scripts/backup_database.sh --yearly 

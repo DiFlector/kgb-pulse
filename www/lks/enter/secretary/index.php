@@ -34,7 +34,7 @@ try {
     // Мероприятия, требующие внимания секретаря
     $eventsStmt = $db->prepare("
         SELECT champn, meroname, merodata, status::text as status, class_distance,
-               (SELECT COUNT(*) FROM listreg WHERE champn = m.champn) as participants_count
+               (SELECT COUNT(*) FROM listreg l JOIN meros m2 ON l.meros_oid = m2.oid WHERE m2.champn = m.champn) as participants_count
         FROM meros m
         WHERE TRIM(status::text) IN ('Регистрация закрыта', 'В процессе', 'Результаты')
         ORDER BY 

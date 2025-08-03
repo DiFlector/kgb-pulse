@@ -4,6 +4,21 @@
  * Возвращает данные о пользователях, мероприятиях, регистрациях и системе
  */
 
+/**
+ * Форматирование размера файла
+ */
+if (!function_exists('formatBytes')) {
+    function formatBytes($bytes, $precision = 2) {
+        $units = array('B', 'KB', 'MB', 'GB', 'TB');
+        
+        for ($i = 0; $bytes > 1024 && $i < count($units) - 1; $i++) {
+            $bytes /= 1024;
+        }
+        
+        return round($bytes, $precision) . ' ' . $units[$i];
+    }
+}
+
 if (!defined('TEST_MODE') && session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -107,7 +122,7 @@ try {
     $fileStats['total_size'] = '0 MB';
     
     // Попытка получить статистику файлов
-    $filesDir = $_SERVER['DOCUMENT_ROOT'] . '/lks/files/';
+    $filesDir = __DIR__ . '/../../files/';
     if (is_dir($filesDir)) {
         $iterator = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($filesDir, RecursiveDirectoryIterator::SKIP_DOTS),
@@ -167,20 +182,5 @@ try {
         'message' => 'Ошибка получения статистики: ' . $e->getMessage()
     ], JSON_UNESCAPED_UNICODE);
     exit;
-}
-
-/**
- * Форматирование размера файла
- */
-if (!function_exists('formatBytes')) {
-    function formatBytes($bytes, $precision = 2) {
-        $units = array('B', 'KB', 'MB', 'GB', 'TB');
-        
-        for ($i = 0; $bytes > 1024 && $i < count($units) - 1; $i++) {
-            $bytes /= 1024;
-        }
-        
-        return round($bytes, $precision) . ' ' . $units[$i];
-    }
 }
 ?> 

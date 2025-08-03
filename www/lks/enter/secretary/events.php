@@ -19,7 +19,7 @@ try {
     $events = $db->query("
         SELECT champn, merodata, meroname, class_distance, defcost, filepolojenie, status::text as status,
                EXTRACT(YEAR FROM CURRENT_DATE) as year,
-               (SELECT COUNT(*) FROM listreg WHERE champn = m.champn) as registrations_count
+               (SELECT COUNT(*) FROM listreg l JOIN meros m2 ON l.meros_oid = m2.oid WHERE m2.champn = m.champn) as registrations_count
         FROM meros m
         WHERE TRIM(status::text) IN ('В ожидании', 'Регистрация', 'Регистрация закрыта', 'В процессе', 'Результаты', 'Завершено')
         ORDER BY 

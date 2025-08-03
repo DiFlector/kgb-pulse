@@ -82,6 +82,148 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
         .protocols-container {
             padding: 20px;
         }
+        /* Обеспечение одинаковой высоты контейнеров протоколов */
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: stretch;
+        }
+        .row > .col-md-6 {
+            display: flex;
+            flex-direction: column;
+        }
+        .protocol-panel {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            min-height: 600px;
+        }
+        .protocols-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            min-height: 500px;
+        }
+        /* Обеспечение одинаковой высоты групп протоколов */
+        .protocol-group {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 200px;
+        }
+        /* Синхронизация высоты соответствующих групп протоколов */
+        .protocols-content {
+            display: flex;
+            flex-direction: column;
+        }
+        .protocols-content .protocol-group {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 20px;
+        }
+        .protocols-content .protocol-group:last-child {
+            margin-bottom: 0;
+        }
+        /* Обеспечение одинаковой высоты для соответствующих групп */
+        .protocol-group {
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
+            min-height: 150px; /* Уменьшаем минимальную высоту для групп */
+        }
+        /* Синхронизация высоты таблиц */
+        .protocol-table {
+            min-height: auto; /* Убираем фиксированную минимальную высоту */
+        }
+        .protocol-table tbody {
+            min-height: auto; /* Убираем фиксированную минимальную высоту */
+        }
+        /* Дополнительные стили для синхронизации */
+        .protocol-panel {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+        .protocols-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .protocol-group {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .age-group {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            width: 100%; /* Обеспечиваем полную ширину */
+            margin-bottom: 15px;
+            box-sizing: border-box; /* Учитываем границы в ширине */
+        }
+        .table-responsive {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .protocol-table {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .protocol-table tbody {
+            flex: 1;
+        }
+        /* Стили для пустых таблиц */
+        .protocol-table tbody tr td[colspan] {
+            padding: 30px 20px;
+            text-align: center;
+            color: #6c757d;
+            font-style: italic;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+        }
+        /* Убираем лишние отступы для пустых таблиц */
+        .protocol-table:has(tbody tr td[colspan]) {
+            min-height: auto;
+        }
+        .protocol-table:has(tbody tr td[colspan]) tbody {
+            min-height: auto;
+        }
+        /* Дополнительные стили для компактности */
+        .protocol-group:has(.protocol-table tbody tr td[colspan]) {
+            min-height: auto;
+        }
+        .age-group:has(.protocol-table tbody tr td[colspan]) {
+            min-height: auto;
+        }
+        /* Убираем лишние отступы для пустых групп */
+        .protocol-group:has(.protocol-table tbody tr td[colspan]) .table-responsive {
+            min-height: auto;
+        }
+        /* Медиа-запрос для мобильных устройств */
+        @media (max-width: 768px) {
+            .row {
+                display: block;
+            }
+            .row > .col-md-6 {
+                display: block;
+            }
+            .protocol-panel {
+                height: auto;
+                min-height: auto;
+            }
+            .protocols-content {
+                min-height: auto;
+            }
+            .protocol-group {
+                min-height: auto;
+            }
+        }
         .event-info-panel {
             background: white;
             border-radius: 8px;
@@ -94,6 +236,11 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
             border-radius: 8px;
             padding: 20px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            width: 100%; /* Обеспечиваем полную ширину */
+            box-sizing: border-box; /* Учитываем границы в ширине */
         }
         .protocol-panel h3 {
             border-bottom: 2px solid #007bff;
@@ -104,7 +251,13 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
             border-bottom-color: #dc3545;
         }
         .protocols-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
             overflow-y: auto;
+            width: 100%; /* Обеспечиваем полную ширину */
+            padding: 0; /* Убираем лишние отступы */
+            box-sizing: border-box; /* Учитываем границы в ширине */
         }
         .loading-spinner {
             text-align: center;
@@ -122,15 +275,67 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
         }
         .protocol-table {
             font-size: 0.9rem;
+            width: 100%; /* Обеспечиваем растягивание на всю ширину */
         }
         .protocol-table th {
             background-color: #f8f9fa;
             font-weight: 600;
+            white-space: nowrap; /* Предотвращаем перенос текста в заголовках */
+            padding: 8px 12px; /* Увеличиваем отступы для лучшей читаемости */
+            text-align: center; /* Выравниваем заголовки по центру */
+            overflow: hidden; /* Скрываем переполнение */
+            text-overflow: ellipsis; /* Показываем многоточие при переполнении */
+        }
+        .protocol-table td {
+            vertical-align: middle; /* Выравнивание содержимого по центру */
+            padding: 8px 12px; /* Увеличиваем отступы для лучшей читаемости */
+            word-wrap: break-word; /* Разрешаем перенос длинного текста */
+            overflow-wrap: break-word; /* Совместимость с разными браузерами */
+            white-space: nowrap; /* Предотвращаем перенос в ячейках */
+            overflow: hidden; /* Скрываем переполнение */
+            text-overflow: ellipsis; /* Показываем многоточие при переполнении */
         }
         .protocol-title {
             color: #007bff;
             font-weight: bold;
             margin-bottom: 15px;
+            width: 100%; /* Растягиваем заголовок на всю ширину */
+            display: block; /* Обеспечиваем блочное отображение */
+            word-wrap: break-word; /* Разрешаем перенос длинных заголовков */
+            overflow-wrap: break-word; /* Совместимость с разными браузерами */
+        }
+        .protocol-group {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 200px;
+            width: 100%; /* Обеспечиваем полную ширину */
+            margin-bottom: 20px;
+            box-sizing: border-box; /* Учитываем границы в ширине */
+        }
+        /* Синхронизация высоты групп протоколов */
+        .protocols-content .protocol-group {
+            margin-bottom: 20px;
+        }
+        .protocols-content .protocol-group:last-child {
+            margin-bottom: 0;
+        }
+        /* Синхронизация высоты групп протоколов */
+        .protocols-content {
+            display: flex;
+            flex-direction: column;
+        }
+        .protocols-content .protocol-group {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        /* Обеспечение одинаковой высоты для соответствующих групп */
+        .protocol-group {
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
         }
         .distance-title {
             color: #495057;
@@ -147,6 +352,8 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
             font-weight: 600;
             margin-bottom: 10px;
             display: block;
+            width: 100%; /* Растягиваем заголовок возрастной группы */
+            word-wrap: break-word; /* Разрешаем перенос длинных заголовков */
         }
         .edit-field {
             cursor: pointer;
@@ -162,6 +369,14 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
         .protected-protocol {
             border: 2px solid #28a745 !important;
             border-radius: 8px;
+        }
+        .completed-finish-protocol {
+            background-color: #d4edda !important;
+            border: 2px solid #28a745 !important;
+            border-radius: 8px;
+        }
+        .completed-finish-protocol .table {
+            background-color: #d4edda !important;
         }
         .loading-overlay {
             position: fixed;
@@ -187,6 +402,149 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
             font-size: 16px;
             color: #666;
         }
+        /* Исправления для таблиц протоколов */
+        .table-responsive {
+            width: 100%; /* Обеспечиваем полную ширину */
+            overflow-x: auto; /* Добавляем горизонтальную прокрутку при необходимости */
+            margin-bottom: 10px; /* Добавляем отступ снизу */
+            display: block; /* Обеспечиваем блочное отображение */
+            border: 1px solid #dee2e6; /* Добавляем границу для лучшей видимости */
+            border-radius: 4px; /* Скругляем углы */
+        }
+        .protocol-table {
+            table-layout: fixed; /* Фиксированная ширина столбцов для лучшего контроля */
+            width: 100%; /* Полная ширина таблицы */
+            min-width: 800px; /* Увеличиваем минимальную ширину для лучшего отображения */
+            border-collapse: collapse; /* Убираем двойные границы */
+        }
+        /* Стили для пустых таблиц с правильным colspan */
+        .protocol-table tbody tr td[colspan] {
+            padding: 40px 20px;
+            text-align: center;
+            color: #6c757d;
+            font-style: italic;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            font-size: 0.95rem;
+            vertical-align: middle;
+            width: 100%; /* Растягиваем на всю ширину */
+            box-sizing: border-box; /* Учитываем границы в ширине */
+        }
+        /* Обеспечиваем правильное отображение заголовков таблиц */
+        .protocol-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background-color: #f8f9fa;
+            border-bottom: 2px solid #dee2e6;
+            white-space: nowrap; /* Предотвращаем перенос текста в заголовках */
+            padding: 8px 12px; /* Увеличиваем отступы для лучшей читаемости */
+            text-align: center; /* Выравниваем заголовки по центру */
+            border: 1px solid #dee2e6; /* Добавляем границы для лучшей видимости */
+            box-sizing: border-box; /* Учитываем границы в ширине */
+        }
+        /* Стили для заголовков с разной шириной */
+        .protocol-table thead th:nth-child(1) { /* Первая колонка (Вода/Место) */
+            width: 10%;
+            min-width: 70px;
+        }
+        .protocol-table thead th:nth-child(2) { /* Вторая колонка (Номер спортсмена/Время финиша) */
+            width: 15%;
+            min-width: 90px;
+        }
+        .protocol-table thead th:nth-child(3) { /* Третья колонка (ФИО/Вода) */
+            width: 30%;
+            min-width: 150px;
+        }
+        .protocol-table thead th:nth-child(4) { /* Четвертая колонка (Дата рождения/Номер спортсмена) */
+            width: 15%;
+            min-width: 100px;
+        }
+        .protocol-table thead th:nth-child(5) { /* Пятая колонка (Спортивный разряд/ФИО) */
+            width: 15%;
+            min-width: 100px;
+        }
+        .protocol-table thead th:nth-child(6) { /* Шестая колонка (Действия/Дата рождения) */
+            width: 10%;
+            min-width: 80px;
+        }
+        .protocol-table thead th:nth-child(7) { /* Седьмая колонка (Спортивный разряд) */
+            width: 5%;
+            min-width: 60px;
+        }
+        /* Обеспечиваем правильное отображение строк таблицы */
+        .protocol-table tbody tr {
+            width: 100%; /* Растягиваем строки на всю ширину */
+        }
+        /* Обеспечиваем правильное отображение ячеек таблицы */
+        .protocol-table tbody td {
+            width: 100%; /* Растягиваем ячейки на всю ширину */
+            box-sizing: border-box; /* Учитываем границы в ширине */
+            border: 1px solid #dee2e6; /* Добавляем границы для лучшей видимости */
+        }
+        /* Стили для кнопок под таблицами */
+        .btn-group {
+            width: 100%; /* Растягиваем группу кнопок */
+            justify-content: flex-start; /* Выравниваем по левому краю */
+        }
+        /* Стили для ячеек с разным содержимым */
+        .protocol-table tbody td:nth-child(1) { /* Первая колонка (Вода/Место) */
+            width: 10%;
+            min-width: 70px;
+            text-align: center;
+        }
+        .protocol-table tbody td:nth-child(2) { /* Вторая колонка (Номер спортсмена/Время финиша) */
+            width: 15%;
+            min-width: 90px;
+            text-align: center;
+        }
+        .protocol-table tbody td:nth-child(3) { /* Третья колонка (ФИО/Вода) */
+            width: 30%;
+            min-width: 150px;
+            text-align: left;
+            white-space: normal; /* Разрешаем перенос для ФИО */
+            word-wrap: break-word; /* Разрешаем перенос длинных имен */
+        }
+        .protocol-table tbody td:nth-child(4) { /* Четвертая колонка (Дата рождения/Номер спортсмена) */
+            width: 15%;
+            min-width: 100px;
+            text-align: center;
+        }
+        .protocol-table tbody td:nth-child(5) { /* Пятая колонка (Спортивный разряд/ФИО) */
+            width: 15%;
+            min-width: 100px;
+            text-align: center;
+        }
+        .protocol-table tbody td:nth-child(6) { /* Шестая колонка (Действия/Дата рождения) */
+            width: 10%;
+            min-width: 80px;
+            text-align: center;
+        }
+        .protocol-table tbody td:nth-child(7) { /* Седьмая колонка (Спортивный разряд) */
+            width: 5%;
+            min-width: 60px;
+            text-align: center;
+        }
+        .btn-group .btn {
+            margin-right: 10px; /* Отступ между кнопками */
+        }
+        /* Исправления для мобильных устройств */
+        @media (max-width: 768px) {
+            .protocol-table {
+                font-size: 0.8rem; /* Уменьшаем размер шрифта на мобильных */
+            }
+            .protocol-table th,
+            .protocol-table td {
+                padding: 0.5rem 0.25rem; /* Уменьшаем отступы */
+            }
+            .btn-group {
+                flex-direction: column; /* Вертикальное расположение кнопок */
+            }
+            .btn-group .btn {
+                margin-right: 0;
+                margin-bottom: 5px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -204,12 +562,20 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
                 <div class="col-md-6 text-end">
                     <p><strong>Статус:</strong> <?php echo htmlspecialchars($event['status']); ?></p>
                     <p><strong>Участников:</strong> <?php echo $participantsCount; ?></p>
-                    <div class="btn-group" role="group">
+                    <div class="btn-group mt-2" role="group">
                         <a href="select-disciplines.php" class="btn btn-outline-secondary">
                             <i class="bi bi-arrow-left me-1"></i>Назад к выбору дисциплин
                         </a>
                         <button type="button" class="btn btn-primary" id="conduct-draw-btn">
                             <i class="fas fa-random"></i> Жеребьевка
+                        </button>
+                    </div>
+                    <div class="btn-group mt-2" role="group">
+                        <button type="button" class="btn btn-outline-success" id="download-start-protocols-btn">
+                            <i class="fas fa-download"></i> Скачать стартовые
+                        </button>
+                        <button type="button" class="btn btn-outline-info" id="download-finish-protocols-btn">
+                            <i class="fas fa-download"></i> Скачать финишные
                         </button>
                     </div>
                 </div>
@@ -236,19 +602,7 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
             </div>
         </div>
         
-        <!-- Отладочная информация -->
-        <div class="row mt-3">
-            <div class="col-12">
-                <div class="alert alert-info">
-                    <h6>Отладочная информация:</h6>
-                    <p><strong>ID мероприятия:</strong> <span id="debug-mero-id"><?php echo htmlspecialchars($eventId); ?></span></p>
-                    <p><strong>Контейнер стартовых протоколов:</strong> <span id="debug-start-container">Проверяется...</span></p>
-                    <p><strong>Контейнер финишных протоколов:</strong> <span id="debug-finish-container">Проверяется...</span></p>
-                    <p><strong>Выбранные дисциплины:</strong> <span id="debug-disciplines"><?php echo htmlspecialchars(json_encode($_SESSION['selected_disciplines'] ?? [])); ?></span></p>
-                    <p><strong>CSS тест:</strong> <span id="debug-css-test">Проверяется...</span></p>
-                </div>
-            </div>
-        </div>
+
     </div>
 
     <!-- Модальное окно для добавления участника -->
@@ -363,7 +717,7 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
     </div>
 
     <!-- Скрытые поля для передачи данных -->
-    <input type="hidden" id="mero-id" value="<?php echo $eventId; ?>">
+    <input type="hidden" id="mero-id" value="<?php echo $meroId; ?>">
     <input type="hidden" id="selected-disciplines" value="<?php echo htmlspecialchars(json_encode($_SESSION['selected_disciplines'] ?? [])); ?>">
     <input type="hidden" id="current-group-key" value="">
     
@@ -396,12 +750,8 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
         setTimeout(() => {
             if (typeof window.protocolsManager !== 'undefined') {
                 console.log('✅ ProtocolsManager загружен успешно');
-                document.getElementById('debug-start-container').textContent = 'ProtocolsManager загружен';
-                document.getElementById('debug-finish-container').textContent = 'ProtocolsManager загружен';
             } else {
                 console.log('❌ ProtocolsManager НЕ загружен');
-                document.getElementById('debug-start-container').textContent = 'ProtocolsManager НЕ загружен';
-                document.getElementById('debug-finish-container').textContent = 'ProtocolsManager НЕ загружен';
             }
         }, 1000);
     </script>
@@ -425,6 +775,6 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
         }
     </script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="/lks/js/secretary/protocols_new.js"></script>
+    <script src="/lks/js/secretary/protocols_new.js?v=<?php echo time(); ?>&nocache=1&fix=1"></script>
 </body>
 </html> 

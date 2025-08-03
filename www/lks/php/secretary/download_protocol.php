@@ -1,212 +1,220 @@
 <?php
 /**
- * Скачивание протокола
+ * Скачивание протокола в формате CSV
  * Файл: www/lks/php/secretary/download_protocol.php
- * Обновлено: поддержка GET параметра redis_key для новой системы
+ * Обновлено: поддержка новой системы JSON файлов и формат CSV
  */
+
+require_once dirname(__DIR__, 3) . '/vendor/autoload.php';
+
+// Вспомогательные функции для работы с датами и временем
+function extractYearFromBirthdate($birthdate) {
+    if (empty($birthdate)) return '';
+    $date = DateTime::createFromFormat('Y-m-d', $birthdate);
+    return $date ? $date->format('Y') : '';
+}
+
+function extractMinutesFromTime($time) {
+    if (empty($time)) return '';
+    $parts = explode(':', $time);
+    return isset($parts[0]) ? $parts[0] : '';
+}
+
+function extractSecondsFromTime($time) {
+    if (empty($time)) return '';
+    $parts = explode(':', $time);
+    return isset($parts[1]) ? $parts[1] : '';
+}
 
 session_start();
 
-// Проверка прав доступа
-if (!isset($_SESSION['user_role']) || !in_array($_SESSION['user_role'], ['Secretary', 'SuperUser', 'Admin'])) {
+// Проверка авторизации и прав доступа
+require_once '../common/Auth.php';
+$auth = new Auth();
+
+if (!$auth->isAuthenticated()) {
     http_response_code(403);
-    echo 'Доступ запрещен';
+    echo 'Доступ запрещен. Пользователь не авторизован.';
+    exit();
+}
+
+if (!$auth->hasAnyRole(['Secretary', 'SuperUser', 'Admin'])) {
+    http_response_code(403);
+    echo 'Доступ запрещен. Требуются права Secretary, SuperUser или Admin.';
     exit();
 }
 
 // Получение параметров
-$redisKey = $_GET['redis_key'] ?? null;
+$groupKey = $_GET['group_key'] ?? null;
+$meroId = $_GET['mero_id'] ?? null;
+$protocolType = $_GET['protocol_type'] ?? 'start';
 
-if (!$redisKey) {
+if (!$groupKey || !$meroId) {
     http_response_code(400);
-    echo 'Не указан ключ протокола';
+    echo 'Не указаны необходимые параметры';
     exit();
 }
 
 try {
     require_once '../db/Database.php';
     require_once '../common/RedisManager.php';
-    
+
     $db = Database::getInstance();
     $redis = RedisManager::getInstance();
-    
-    // Получение данных протокола из Redis
-    $protocolData = $redis->get($redisKey);
-    if (!$protocolData) {
-        http_response_code(404);
-        echo 'Протокол не найден';
-        exit();
-    }
-    
-    $protocol = json_decode($protocolData, true);
-    if (!$protocol || !isset($protocol['participants'])) {
-        http_response_code(500);
-        echo 'Ошибка чтения данных протокола';
-        exit();
-    }
-    
+
     // Получение информации о мероприятии
-    $meroId = $protocol['meroId'] ?? null;
-    if (!$meroId) {
-        http_response_code(500);
-        echo 'Не удалось определить мероприятие';
-        exit();
-    }
-    
     $stmt = $db->prepare("SELECT meroname, merodata FROM meros WHERE champn = ?");
     $stmt->execute([$meroId]);
     $mero = $stmt->fetch(PDO::FETCH_ASSOC);
-    
+
     if (!$mero) {
         http_response_code(404);
         echo 'Мероприятие не найдено';
         exit();
     }
-    
-    // Подключение библиотеки PhpSpreadsheet
-    require_once dirname(__DIR__, 3) . '/vendor/autoload.php';
-    
-    use PhpOffice\PhpSpreadsheet\Spreadsheet;
-    use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
-    use PhpOffice\PhpSpreadsheet\Style\Alignment;
-    use PhpOffice\PhpSpreadsheet\Style\Border;
-    use PhpOffice\PhpSpreadsheet\Style\Fill;
-    
-    // Создание Excel файла
-    $spreadsheet = new Spreadsheet();
-    $sheet = $spreadsheet->getActiveSheet();
-    $sheet->setTitle('Протокол');
-    
-    // Заполнение листа данными протокола
-    fillProtocolSheet($sheet, $protocol, $mero);
-    
-    // Настройка заголовков для скачивания
-    $type = $protocol['type'] ?? 'unknown';
-    $discipline = $protocol['discipline'] ?? '';
-    $sex = $protocol['sex'] ?? '';
-    $distance = $protocol['distance'] ?? '';
-    $ageGroup = $protocol['ageGroup'] ?? '';
-    
-    $filename = "{$type}_{$discipline}_{$sex}_{$distance}м_{$ageGroup}_{$mero['meroname']}_" . date('Y-m-d_H-i-s') . ".xlsx";
-    $filename = preg_replace('/[^a-zA-Z0-9_\-\.]/', '_', $filename);
-    
-    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    header('Content-Disposition: attachment;filename="' . $filename . '"');
-    header('Cache-Control: max-age=0');
-    
-    $writer = new Xlsx($spreadsheet);
-    $writer->save('php://output');
-    
-} catch (Exception $e) {
-    error_log("Ошибка экспорта протокола: " . $e->getMessage());
-    http_response_code(500);
-    echo 'Ошибка экспорта: ' . $e->getMessage();
-}
 
-/**
- * Заполнение листа данными протокола
- */
-function fillProtocolSheet($sheet, $protocol, $mero) {
-    $type = $protocol['type'] ?? 'start';
-    $discipline = $protocol['discipline'] ?? '';
-    $sex = $protocol['sex'] ?? '';
-    $distance = $protocol['distance'] ?? '';
-    $ageGroup = $protocol['ageGroup'] ?? '';
-    $startTime = $protocol['startTime'] ?? '';
-    
-    // Заголовок протокола
-    $sheet->setCellValue('A1', "ПРОТОКОЛ");
-    $sheet->mergeCells('A1:H1');
-    $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(16);
-    $sheet->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-    
-    // Информация о мероприятии
-    $sheet->setCellValue('A2', "Мероприятие: " . $mero['meroname']);
-    $sheet->mergeCells('A2:H2');
-    
-    $sheet->setCellValue('A3', "Дата: " . $mero['merodata']);
-    $sheet->mergeCells('A3:H3');
-    
-    // Информация о дисциплине
-    $sheet->setCellValue('A4', "Дисциплина: {$discipline} {$sex} {$distance}м");
-    $sheet->mergeCells('A4:H4');
-    
-    $sheet->setCellValue('A5', "Возрастная группа: {$ageGroup}");
-    $sheet->mergeCells('A5:H5');
-    
-    if ($startTime) {
-        $sheet->setCellValue('A6', "Время старта: {$startTime}");
-        $sheet->mergeCells('A6:H6');
+    // Загружаем данные протоколов из JSON файла
+    $protocolsFile = __DIR__ . "/../../files/json/protocols/protocols_{$meroId}.json";
+    if (!file_exists($protocolsFile)) {
+        http_response_code(404);
+        echo 'Файл протоколов не найден';
+        exit();
     }
-    
-    // Заголовки таблицы
-    $row = 8;
-    
-    if ($type === 'start') {
-        $headers = ['Вода', '№ спортсмена', 'ФИО', 'Год рождения', 'Возрастная группа', 'Спортивный разряд'];
-        $col = 'A';
-        foreach ($headers as $header) {
-            $sheet->setCellValue($col . $row, $header);
-            $sheet->getStyle($col . $row)->getFont()->setBold(true);
-            $sheet->getStyle($col . $row)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('E9ECEF');
-            $col++;
+
+    $jsonData = file_get_contents($protocolsFile);
+    $protocolsData = json_decode($jsonData, true);
+
+    // Находим нужную группу
+    $targetAgeGroup = null;
+    $targetProtocol = null;
+    $parts = explode('_', $groupKey);
+    if (count($parts) >= 5) {
+        $meroId = $parts[0];
+        $discipline = $parts[1];
+        $sex = $parts[2];
+        $distance = $parts[3];
+        $ageGroupName = implode('_', array_slice($parts, 4));
+        $cyrillicSex = $sex === 'M' ? 'М' : ($sex === 'W' ? 'Ж' : $sex);
+        foreach ($protocolsData as $protocol) {
+            if ($protocol['meroId'] == $meroId && 
+                $protocol['discipline'] === $discipline && 
+                $protocol['sex'] === $cyrillicSex && 
+                $protocol['distance'] === $distance) {
+                foreach ($protocol['ageGroups'] as $ageGroup) {
+                    if (strpos($ageGroup['name'], $ageGroupName) !== false) {
+                        $targetAgeGroup = $ageGroup;
+                        $targetProtocol = $protocol;
+                        break 2;
+                    }
+                }
+            }
         }
+    }
+    if (!$targetAgeGroup) {
+        foreach ($protocolsData as $protocol) {
+            foreach ($protocol['ageGroups'] as $ageGroup) {
+                if ($ageGroup['redisKey'] === $groupKey) {
+                    $targetAgeGroup = $ageGroup;
+                    $targetProtocol = $protocol;
+                    break 2;
+                }
+            }
+        }
+    }
+    if (!$targetAgeGroup) {
+        http_response_code(404);
+        echo 'Группа протокола не найдена';
+        exit();
+    }
+    if ($protocolType === 'finish') {
+        $isComplete = true;
+        foreach ($targetAgeGroup['participants'] as $participant) {
+            if (empty($participant['place']) || empty($participant['finishTime'])) {
+                $isComplete = false;
+                break;
+            }
+        }
+        if (!$isComplete) {
+            http_response_code(400);
+            echo 'Финишный протокол не заполнен полностью';
+            exit();
+        }
+    }
+
+    // Формируем CSV данные
+    $csvData = [];
+    $raceNumber = 1;
+    $discipline = $targetProtocol['discipline'] . ' ' . $targetProtocol['distance'] . 'м ' . $targetProtocol['sex'];
+    $ageGroup = $targetAgeGroup['name'];
+    $csvData[] = [$raceNumber . ';;' . $discipline . ';;;' . $ageGroup . ';;;;'];
+    if ($protocolType === 'start') {
+        $csvData[] = ['СТАРТ;Время заезда;Вода;-;Номер;ФИО;Год рождения;Группа;Спортивный разряд;Спорт.организация'];
     } else {
-        $headers = ['Место', 'Время финиша', 'Вода', 'ФИО', 'Год рождения', 'Возрастная группа', 'Спортивный разряд', 'Время прохождения'];
-        $col = 'A';
-        foreach ($headers as $header) {
-            $sheet->setCellValue($col . $row, $header);
-            $sheet->getStyle($col . $row)->getFont()->setBold(true);
-            $sheet->getStyle($col . $row)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('E9ECEF');
-            $col++;
-        }
+        $csvData[] = ['ФИНИШ;Место в заезде;Вода;-;Время прохождения;Минуты;Секунды;Номер;ФИО;Год рождения;Группа;Спортивный разряд;Спорт.организация'];
     }
-    
-    // Данные участников
-    $participants = $protocol['participants'] ?? [];
-    usort($participants, function($a, $b) {
-        return ($a['lane'] ?? 0) - ($b['lane'] ?? 0);
-    });
-    
-    $row++;
-    foreach ($participants as $participant) {
-        $col = 'A';
-        
-        if ($type === 'start') {
-            $sheet->setCellValue($col++, $participant['lane'] ?? '');
-            $sheet->setCellValue($col++, $participant['startNumber'] ?? '');
-            $sheet->setCellValue($col++, $participant['fio'] ?? '');
-            $sheet->setCellValue($col++, $participant['birthYear'] ?? '');
-            $sheet->setCellValue($col++, $participant['ageGroup'] ?? '');
-            $sheet->setCellValue($col++, $participant['sportRank'] ?? '');
+    $maxLanes = 10;
+    for ($lane = 0; $lane < $maxLanes; $lane++) {
+        $participant = null;
+        foreach ($targetAgeGroup['participants'] as $p) {
+            if (($p['lane'] ?? 0) == $lane) {
+                $participant = $p;
+                break;
+            }
+        }
+        if ($participant) {
+            if ($protocolType === 'start') {
+                $row = [
+                    ';;' . $lane . ';-;' . 
+                    ($participant['userId'] ?? '') . ';' . 
+                    ($participant['fio'] ?? '') . ';' . 
+                    extractYearFromBirthdate($participant['birthdata'] ?? '') . ';' . 
+                    $ageGroup . ';' . 
+                    ($participant['sportzvanie'] ?? 'Б/р') . ';' . 
+                    ($participant['city'] ?? 'Москва')
+                ];
+            } else {
+                $row = [
+                    ';' . ($participant['place'] ?? '') . ';' . $lane . ';-;' . 
+                    ($participant['finishTime'] ?? '') . ';' . 
+                    extractMinutesFromTime($participant['finishTime'] ?? '') . ';' . 
+                    extractSecondsFromTime($participant['finishTime'] ?? '') . ';' . 
+                    ($participant['userId'] ?? '') . ';' . 
+                    ($participant['fio'] ?? '') . ';' . 
+                    extractYearFromBirthdate($participant['birthdata'] ?? '') . ';' . 
+                    $ageGroup . ';' . 
+                    ($participant['sportzvanie'] ?? 'Б/р') . ';' . 
+                    ($participant['city'] ?? 'Москва')
+                ];
+            }
+            $csvData[] = $row;
         } else {
-            $sheet->setCellValue($col++, ''); // Место (заполняется вручную)
-            $sheet->setCellValue($col++, ''); // Время финиша (заполняется вручную)
-            $sheet->setCellValue($col++, ''); // Вода (заполняется вручную)
-            $sheet->setCellValue($col++, $participant['fio'] ?? '');
-            $sheet->setCellValue($col++, $participant['birthYear'] ?? '');
-            $sheet->setCellValue($col++, $participant['ageGroup'] ?? '');
-            $sheet->setCellValue($col++, $participant['sportRank'] ?? '');
-            $sheet->setCellValue($col++, ''); // Время прохождения (дублирует время финиша)
+            if ($protocolType === 'start') {
+                $row = [';;' . $lane . ';-;;;;;;'];
+            } else {
+                $row = [';;' . $lane . ';-;;;;;;;'];
+            }
+            $csvData[] = $row;
         }
-        
-        $row++;
     }
-    
-    // Настройка стилей
-    $lastRow = $row - 1;
-    $lastCol = $type === 'start' ? 'F' : 'H';
-    
-    // Границы таблицы
-    $sheet->getStyle("A8:{$lastCol}{$lastRow}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
-    
-    // Автоподбор ширины столбцов
-    foreach (range('A', $lastCol) as $col) {
-        $sheet->getColumnDimension($col)->setAutoSize(true);
+
+    // Очищаем буфер вывода и отправляем заголовки
+    if (ob_get_level()) ob_end_clean();
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="protocol_' . $groupKey . '_' . $protocolType . '.csv"');
+    header('Cache-Control: max-age=0');
+    if (function_exists('mb_internal_encoding')) mb_internal_encoding('UTF-8');
+
+    // Добавляем BOM для совместимости с Excel
+    echo "\xEF\xBB\xBF";
+
+    // Выводим строки
+    foreach ($csvData as $row) {
+        echo $row[0] . "\r\n";
     }
-    
-    // Выравнивание
-    $sheet->getStyle("A8:{$lastCol}{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-    $sheet->getStyle("C8:C{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT); // ФИО по левому краю
+    exit;
+
+} catch (Exception $e) {
+    http_response_code(500);
+    echo 'Ошибка создания протокола: ' . $e->getMessage();
 }
 ?> 

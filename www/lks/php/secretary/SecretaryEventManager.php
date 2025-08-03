@@ -134,9 +134,23 @@ class SecretaryEventManager {
      * Проведение жеребьевки для выбранных дисциплин
      */
     public function conductDraw($selectedDisciplines) {
-        $results = [];
+        $protocols = [];
         
-        foreach ($selectedDisciplines as $discipline) {
+        error_log("Начинаем жеребьевку для дисциплин: " . var_export($selectedDisciplines, true));
+        
+        foreach ($selectedDisciplines as $disciplineString) {
+            error_log("Обрабатываем дисциплину: $disciplineString");
+            
+            // Парсим строку дисциплины в массив
+            $discipline = $this->parseDisciplineString($disciplineString);
+            
+            if (!$discipline) {
+                error_log("Не удалось распарсить дисциплину: $disciplineString");
+                continue;
+            }
+            
+            error_log("Распарсенная дисциплина: " . var_export($discipline, true));
+            
             $participants = $this->getParticipantsForDiscipline($discipline);
             
             if (empty($participants)) {
@@ -146,23 +160,94 @@ class SecretaryEventManager {
             // Группируем участников по возрастным группам
             $groupedParticipants = $this->groupParticipantsByAgeGroups($participants, $discipline);
             
+            // Создаем структуру протокола для JavaScript
+            $protocol = [
+                'discipline' => $discipline['class'],
+                'distance' => $discipline['distance'],
+                'sex' => $discipline['sex'],
+                'ageGroups' => []
+            ];
+            
             // Проводим жеребьевку для каждой группы
             foreach ($groupedParticipants as $ageGroup => $groupParticipants) {
                 $drawResult = $this->conductDrawForGroup($groupParticipants, $discipline, $ageGroup);
-                $results[] = $drawResult;
+                
+                // Создаем возрастную группу для JavaScript
+                $ageGroupData = [
+                    'name' => $ageGroup,
+                    'protocol_number' => count($protocol['ageGroups']) + 1,
+                    'redisKey' => "protocol:{$this->meroOid}:{$discipline['class']}:{$discipline['sex']}:{$discipline['distance']}:{$ageGroup}",
+                    'protected' => false,
+                    'participants' => []
+                ];
+                
+                // Добавляем участников в возрастную группу
+                foreach ($drawResult['heats'] as $heatIndex => $heat) {
+                    foreach ($heat as $participant) {
+                        $ageGroupData['participants'][] = [
+                            'user_id' => $participant['user_id'],
+                            'userid' => $participant['userid'],
+                            'fio' => $participant['fio'],
+                            'birthdata' => $participant['birthdata'],
+                            'sportzvanie' => $participant['sportzvanie'],
+                            'city' => $participant['city'],
+                            'teamname' => $participant['teamname'] ?? '',
+                            'teamcity' => $participant['teamcity'] ?? '',
+                            'lane' => $participant['lane'],
+                            'start_number' => $participant['start_number'],
+                            'place' => null,
+                            'finishTime' => null
+                        ];
+                    }
+                }
+                
+                $protocol['ageGroups'][] = $ageGroupData;
             }
+            
+            $protocols[] = $protocol;
         }
         
         // Сохраняем результаты в Redis
-        $this->saveDrawResults($results);
+        $this->saveDrawResults($protocols);
         
-        return $results;
+        return $protocols;
+    }
+    
+    /**
+     * Парсинг строки дисциплины в массив
+     */
+    private function parseDisciplineString($disciplineString) {
+        // Формат: "C-1_М_200" -> {class: "C-1", sex: "М", distance: "200"}
+        $parts = explode('_', $disciplineString);
+        
+        if (count($parts) !== 3) {
+            error_log("Неверный формат дисциплины: $disciplineString");
+            return null;
+        }
+        
+        return [
+            'class' => $parts[0],
+            'sex' => $parts[1],
+            'distance' => $parts[2]
+        ];
     }
     
     /**
      * Получение участников для дисциплины
      */
     private function getParticipantsForDiscipline($discipline) {
+        // Проверяем, что дисциплина является массивом
+        if (!is_array($discipline)) {
+            error_log("Дисциплина не является массивом: " . var_export($discipline, true));
+            return [];
+        }
+        
+        // Проверяем наличие обязательных полей
+        if (!isset($discipline['class']) || !isset($discipline['sex'])) {
+            error_log("Отсутствуют обязательные поля в дисциплине: " . var_export($discipline, true));
+            return [];
+        }
+        
         $stmt = $this->pdo->prepare("
             SELECT 
                 u.oid as user_id,
@@ -234,18 +319,54 @@ class SecretaryEventManager {
      * Группировка участников по возрастным группам
      */
     private function groupParticipantsByAgeGroups($participants, $discipline) {
+        // Получаем возрастные группы из class_distance
+        $classDistance = json_decode($this->eventData['class_distance'], true);
+        
+        if (!isset($classDistance[$discipline['class']])) {
+            error_log("Класс {$discipline['class']} не найден в class_distance");
+            return ['Общая группа' => $participants];
+        }
+        
+        $classData = $classDistance[$discipline['class']];
+        
+        if (!isset($classData['sex']) || !isset($classData['age_group'])) {
+            error_log("Отсутствуют данные о полах или возрастных группах для класса {$discipline['class']}");
+            return ['Общая группа' => $participants];
+        }
+        
+        // Находим индекс пола
+        $sexIndex = array_search($discipline['sex'], $classData['sex']);
+        
+        if ($sexIndex === false) {
+            error_log("Пол {$discipline['sex']} не найден для класса {$discipline['class']}");
+            return ['Общая группа' => $participants];
+        }
+        
+        // Получаем строку возрастных групп для данного пола
+        $ageGroupString = $classData['age_group'][$sexIndex];
+        
+        // Парсим возрастные группы
+        $ageGroups = $this->parseAgeGroups($ageGroupString);
+        
+        if (empty($ageGroups)) {
+            error_log("Не удалось распарсить возрастные группы: $ageGroupString");
+            return ['Общая группа' => $participants];
+        }
+        
+        // Группируем участников по возрастным группам
         $grouped = [];
         
-        foreach ($discipline['age_groups'] as $ageGroup) {
+        foreach ($ageGroups as $ageGroup) {
             $grouped[$ageGroup['display_name']] = [];
         }
         
         foreach ($participants as $participant) {
+            $age = $this->calculateAge($participant['birthdata']);
             $assignedGroup = null;
             
             // Ищем подходящую возрастную группу
-            foreach ($discipline['age_groups'] as $ageGroup) {
-                if ($participant['age'] >= $ageGroup['min_age'] && $participant['age'] <= $ageGroup['max_age']) {
+            foreach ($ageGroups as $ageGroup) {
+                if ($age >= $ageGroup['min_age'] && $age <= $ageGroup['max_age']) {
                     $assignedGroup = $ageGroup['display_name'];
                     break;
                 }
@@ -253,13 +374,22 @@ class SecretaryEventManager {
             
             if ($assignedGroup) {
                 $grouped[$assignedGroup][] = $participant;
+            } else {
+                error_log("Участник {$participant['fio']} (возраст: $age) не подходит ни под одну возрастную группу");
             }
         }
         
-        // Убираем пустые группы
-        return array_filter($grouped, function($group) {
-            return !empty($group);
+        // Удаляем пустые группы
+        $grouped = array_filter($grouped, function($participants) {
+            return !empty($participants);
         });
+        
+        if (empty($grouped)) {
+            error_log("Нет участников в возрастных группах, возвращаем общую группу");
+            return ['Общая группа' => $participants];
+        }
+        
+        return $grouped;
     }
     
     /**

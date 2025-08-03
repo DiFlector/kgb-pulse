@@ -622,6 +622,9 @@ function createParticipantRow(userData) {
     row.draggable = true;
     row.dataset.userId = userData.userid;
     
+    // Определяем максимальное количество дорожек в зависимости от типа лодки
+    const maxLanes = (userData.discipline === 'D-10') ? 6 : 9;
+    
     row.innerHTML = `
         <div class="row align-items-center">
             <div class="col-md-1">
@@ -634,7 +637,12 @@ function createParticipantRow(userData) {
                 <span class="participant-team">${userData.team || ''}</span>
             </div>
             <div class="col-md-2">
-                <input type="number" class="form-control form-control-sm lane-input" placeholder="Дорожка" min="1">
+                <input type="number" class="form-control form-control-sm lane-input" 
+                       placeholder="Дорожка" min="1" max="${maxLanes}" 
+                       value="${userData.lane || ''}" 
+                       data-original-lane="${userData.lane || ''}"
+                       onchange="updateLane(this, ${userData.userid}, '${userData.groupKey || ''}')">
+                <small class="text-muted">Макс: ${maxLanes}</small>
             </div>
             <div class="col-md-2">
                 <input type="time" class="form-control form-control-sm start-time-input" step="1">
@@ -649,6 +657,75 @@ function createParticipantRow(userData) {
 }
 
 /**
+ * Обновление дорожки участника
+ */
+async function updateLane(input, userId, groupKey) {
+    const newLane = parseInt(input.value);
+    const originalLane = parseInt(input.dataset.originalLane) || 0;
+    const maxLanes = parseInt(input.max);
+    
+    // Проверяем валидность введенного значения
+    if (newLane < 1 || newLane > maxLanes) {
+        alert(`Номер дорожки должен быть от 1 до ${maxLanes}`);
+        input.value = originalLane;
+        return;
+    }
+    
+    // Если дорожка не изменилась, ничего не делаем
+    if (newLane === originalLane) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/lks/php/secretary/update_lane.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                meroId: getCurrentMeroId(),
+                groupKey: groupKey,
+                userId: userId,
+                newLane: newLane
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Обновляем оригинальное значение
+            input.dataset.originalLane = newLane;
+            
+            // Показываем уведомление об успехе
+            showNotification(data.message, 'success');
+            
+            // Отмечаем что есть изменения в протоколе
+            const protocolCard = input.closest('.protocol-card');
+            if (protocolCard) {
+                protocolCard.dataset.hasChanges = 'true';
+            }
+        } else {
+            // Возвращаем исходное значение при ошибке
+            input.value = originalLane;
+            showNotification(data.message, 'error');
+        }
+    } catch (error) {
+        console.error('Ошибка обновления дорожки:', error);
+        input.value = originalLane;
+        showNotification('Ошибка обновления дорожки', 'error');
+    }
+}
+
+/**
+ * Получение ID текущего мероприятия
+ */
+function getCurrentMeroId() {
+    // Получаем ID мероприятия из URL или сессии
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('meroId') || document.querySelector('[data-mero-id]')?.dataset.meroId;
+}
+
+/**
  * Обновление счетчика участников
  */
 function updateParticipantsCount(protocolCard) {
@@ -658,4 +735,28 @@ function updateParticipantsCount(protocolCard) {
     if (countElement) {
         countElement.textContent = `${participantRows.length} участников`;
     }
+} 
+
+/**
+ * Показ уведомлений
+ */
+function showNotification(message, type = 'info') {
+    // Создаем элемент уведомления
+    const notification = document.createElement('div');
+    notification.className = `alert alert-${type === 'error' ? 'danger' : type} alert-dismissible fade show position-fixed`;
+    notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    notification.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    // Добавляем уведомление на страницу
+    document.body.appendChild(notification);
+    
+    // Автоматически удаляем через 5 секунд
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.remove();
+        }
+    }, 5000);
 } 

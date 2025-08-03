@@ -39,7 +39,7 @@ try {
             data,
             race_type
         FROM user_statistic 
-        WHERE userid = :userid 
+        WHERE users_oid = :userid 
         ORDER BY data DESC, meroname ASC
     ";
     $statsStmt = $db->prepare($statsQuery);

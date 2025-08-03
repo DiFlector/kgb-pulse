@@ -36,70 +36,67 @@ if (!$meroId || !$groupKey || !$participantUserId || !$field) {
 }
 
 try {
-    // Загружаем данные протоколов
-    $protocolsDir = __DIR__ . '/../../../files/json/protocols/';
-    $filename = $protocolsDir . "protocols_{$meroId}.json";
+    $db = Database::getInstance();
     
-    if (!file_exists($filename)) {
-        echo json_encode(['success' => false, 'message' => 'Файл протоколов не найден']);
+    // Получаем oid пользователя по userid
+    $stmt = $db->prepare("SELECT oid FROM users WHERE userid = ?");
+    $stmt->execute([$participantUserId]);
+    $userOid = $stmt->fetchColumn();
+    
+    if (!$userOid) {
+        echo json_encode(['success' => false, 'message' => 'Пользователь не найден']);
         exit;
     }
     
-    $jsonData = file_get_contents($filename);
-    $protocolsData = json_decode($jsonData, true);
+    // Получаем текущие данные дисциплины
+    $stmt = $db->prepare("
+        SELECT discipline 
+        FROM listreg 
+        WHERE users_oid = ? AND meros_oid = ?
+    ");
+    $stmt->execute([$userOid, $meroId]);
+    $disciplineData = $stmt->fetch(PDO::FETCH_ASSOC);
     
-    // Находим нужную группу и участника
-    $participantFound = false;
-    foreach ($protocolsData as &$protocol) {
-        foreach ($protocol['ageGroups'] as &$ageGroup) {
-            if ($ageGroup['redisKey'] === $groupKey) {
-                foreach ($ageGroup['participants'] as &$participant) {
-                    if ($participant['userId'] == $participantUserId) {
-                        // Обновляем поле
-                        $participant[$field] = $value;
-                        
-                        // Если обновляем место или время финиша, отмечаем группу как защищенную
-                        if (in_array($field, ['place', 'finishTime'])) {
-                            $ageGroup['protected'] = true;
-                        }
-                        
-                        $participantFound = true;
-                        break 3;
-                    }
-                }
-            }
-        }
-    }
-    
-    if (!$participantFound) {
-        echo json_encode(['success' => false, 'message' => 'Участник не найден']);
+    if (!$disciplineData) {
+        echo json_encode(['success' => false, 'message' => 'Регистрация участника не найдена']);
         exit;
     }
     
-    // Сохраняем в Redis
-    $redis = new Redis();
-    $redis->connect('redis', 6379);
+    $discipline = json_decode($disciplineData['discipline'], true);
     
-    foreach ($protocolsData as $protocol) {
-        foreach ($protocol['ageGroups'] as $ageGroup) {
-            if ($ageGroup['redisKey'] === $groupKey) {
-                $redis->setex($ageGroup['redisKey'], 86400, json_encode($ageGroup));
-                break 2;
-            }
-        }
+    // Определяем класс лодки из groupKey
+    $groupParts = explode('_', $groupKey);
+    $boatClass = $groupParts[1] ?? 'K-1'; // По умолчанию K-1
+    
+    // Обновляем поле в discipline
+    if (!isset($discipline[$boatClass])) {
+        $discipline[$boatClass] = [];
     }
     
-    // Сохраняем в JSON файл
-    file_put_contents($filename, json_encode($protocolsData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+    $discipline[$boatClass][$field] = $value;
+    
+    // Обновляем данные в базе
+    $stmt = $db->prepare("
+        UPDATE listreg 
+        SET discipline = ? 
+        WHERE users_oid = ? AND meros_oid = ?
+    ");
+    $stmt->execute([json_encode($discipline), $userOid, $meroId]);
     
     echo json_encode([
         'success' => true,
         'message' => 'Данные участника обновлены',
         'field' => $field,
-        'value' => $value
+        'value' => $value,
+        'boatClass' => $boatClass
     ]);
     
 } catch (Exception $e) {
-    echo json_encode(['success' => false, 'message' => 'Ошибка обновления данных: ' . $e->getMessage()]);
+    error_log("Ошибка обновления данных участника: " . $e->getMessage());
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Ошибка обновления данных: ' . $e->getMessage()
+    ]);
 }
 ?> 

@@ -1,5 +1,9 @@
 <?php
 session_start();
+
+// Устанавливаем правильный Content-Type для JSON ответов
+header('Content-Type: application/json; charset=utf-8');
+
 require_once __DIR__ . '/../db/Database.php';
 require_once __DIR__ . '/SecretaryEventManager.php';
 

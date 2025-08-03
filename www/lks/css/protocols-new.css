@@ -442,4 +442,66 @@
 
 .age-group-section:hover {
     background-color: #f8f9fa;
+}
+
+/* Обеспечение одинаковой высоты контейнеров протоколов */
+.row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+}
+
+.row > .col-md-6 {
+    display: flex;
+    flex-direction: column;
+}
+
+.protocol-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 600px;
+}
+
+.protocols-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 500px;
+}
+
+.protocols-container {
+    min-height: 100vh;
+}
+
+/* Обеспечение одинаковой высоты групп протоколов */
+.protocol-group {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 200px;
+}
+
+/* Медиа-запрос для мобильных устройств */
+@media (max-width: 768px) {
+    .row {
+        display: block;
+    }
+    
+    .row > .col-md-6 {
+        display: block;
+    }
+    
+    .protocol-panel {
+        height: auto;
+        min-height: auto;
+    }
+    
+    .protocols-content {
+        min-height: auto;
+    }
+    
+    .protocol-group {
+        min-height: auto;
+    }
 } 

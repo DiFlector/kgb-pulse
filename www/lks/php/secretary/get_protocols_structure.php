@@ -1,120 +1,126 @@
 <?php
 /**
- * API для получения структуры протоколов с нумерацией
+ * Получение структуры протоколов для отображения
  * Файл: www/lks/php/secretary/get_protocols_structure.php
  */
 
-require_once __DIR__ . "/../common/Auth.php";
 require_once __DIR__ . "/../db/Database.php";
-require_once __DIR__ . "/protocol_numbering.php";
+require_once __DIR__ . "/../common/Auth.php";
+
+if (!defined('TEST_MODE') && session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// Проверка авторизации
+$auth = new Auth();
+if (!$auth->isAuthenticated() || !$auth->hasAnyRole(['Secretary', 'SuperUser', 'Admin'])) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Доступ запрещен']);
+    exit;
+}
 
 header('Content-Type: application/json; charset=utf-8');
 
 try {
-    // Проверяем авторизацию
-    $auth = new Auth();
-    if (!$auth->isAuthenticated()) {
-        http_response_code(401);
-        echo json_encode(['success' => false, 'message' => 'Не авторизован']);
-        exit;
-    }
-
-    // Проверяем права секретаря
-    if (!$auth->hasAnyRole(['Secretary', 'SuperUser', 'Admin'])) {
-        http_response_code(403);
-        echo json_encode(['success' => false, 'message' => 'Недостаточно прав']);
-        exit;
-    }
-
-    // Получаем данные из POST запроса
     $input = json_decode(file_get_contents('php://input'), true);
+    $meroId = $input['meroId'] ?? null;
     
-    if (!$input || !isset($input['meroId'])) {
-        http_response_code(400);
-        echo json_encode(['success' => false, 'message' => 'Не указан ID мероприятия']);
-        exit;
+    if (!$meroId) {
+        throw new Exception('Не указан ID мероприятия');
     }
-
-    $meroId = intval($input['meroId']);
-    $selectedDisciplines = $input['disciplines'] ?? null;
-
-    // Отладочная информация
-    error_log("get_protocols_structure.php: meroId = " . $meroId);
-    error_log("get_protocols_structure.php: selectedDisciplines = " . json_encode($selectedDisciplines));
-
-    // Получаем информацию о мероприятии
+    
     $db = Database::getInstance();
-    $stmt = $db->prepare("SELECT class_distance FROM meros WHERE champn = ?");
+    
+    // Получаем данные мероприятия
+    $stmt = $db->prepare("SELECT * FROM meros WHERE oid = ?");
     $stmt->execute([$meroId]);
     $event = $stmt->fetch(PDO::FETCH_ASSOC);
-
+    
     if (!$event) {
-        http_response_code(404);
-        echo json_encode(['success' => false, 'message' => 'Мероприятие не найдено']);
-        exit;
+        throw new Exception('Мероприятие не найдено');
     }
-
+    
+    // Парсим class_distance
     $classDistance = json_decode($event['class_distance'], true);
-    
     if (!$classDistance) {
-        http_response_code(400);
-        echo json_encode(['success' => false, 'message' => 'Некорректная структура дисциплин']);
-        exit;
+        throw new Exception('Ошибка чтения конфигурации классов');
     }
-
-    // Получаем структуру протоколов с нумерацией
-    $structure = ProtocolNumbering::getProtocolsStructure($classDistance, $selectedDisciplines);
     
-    error_log("get_protocols_structure.php: получена структура с " . count($structure) . " протоколами");
-    error_log("get_protocols_structure.php: структура: " . json_encode($structure));
-
-    // Группируем протоколы по дисциплинам для удобства отображения
-    $groupedStructure = [];
-    foreach ($structure as $protocol) {
-        $disciplineKey = $protocol['class'] . '_' . $protocol['sex'] . '_' . $protocol['distance'];
+    $protocolsStructure = [];
+    
+    // Проходим по всем классам лодок
+    foreach ($classDistance as $boatClass => $config) {
+        $sexes = $config['sex'] ?? [];
+        $distances = $config['dist'] ?? [];
+        $ageGroups = $config['age_group'] ?? [];
         
-        if (!isset($groupedStructure[$disciplineKey])) {
-            $groupedStructure[$disciplineKey] = [
-                'class' => $protocol['class'],
-                'sex' => $protocol['sex'],
-                'distance' => $protocol['distance'],
-                'ageGroups' => []
-            ];
+        // Проходим по полам
+        foreach ($sexes as $sexIndex => $sex) {
+            $distance = $distances[$sexIndex] ?? '';
+            $ageGroupStr = $ageGroups[$sexIndex] ?? '';
+            
+            if (!$distance || !$ageGroupStr) {
+                continue;
+            }
+            
+            // Разбиваем дистанции
+            $distanceList = array_map('trim', explode(',', $distance));
+            
+            // Разбиваем возрастные группы
+            $ageGroupList = array_map('trim', explode(',', $ageGroupStr));
+            
+            foreach ($distanceList as $dist) {
+                foreach ($ageGroupList as $ageGroup) {
+                    // Извлекаем название группы
+                    if (preg_match('/^(.+?):\s*(\d+)-(\d+)$/', $ageGroup, $matches)) {
+                        $groupName = trim($matches[1]);
+                        $minAge = (int)$matches[2];
+                        $maxAge = (int)$matches[3];
+                        
+                        $redisKey = "{$meroId}_{$boatClass}_{$sex}_{$dist}_{$groupName}";
+                        
+                        $protocolsStructure[] = [
+                            'meroId' => (int)$meroId,
+                            'discipline' => $boatClass,
+                            'sex' => $sex,
+                            'distance' => $dist,
+                            'ageGroups' => [
+                                [
+                                    'name' => $groupName,
+                                    'minAge' => $minAge,
+                                    'maxAge' => $maxAge,
+                                    'displayName' => $ageGroup,
+                                    'protocol_number' => count($protocolsStructure) + 1,
+                                    'redisKey' => $redisKey,
+                                    'protected' => false
+                                ]
+                            ],
+                            'created_at' => date('Y-m-d H:i:s')
+                        ];
+                    }
+                }
+            }
         }
-        
-        $groupedStructure[$disciplineKey]['ageGroups'][] = [
-            'name' => $protocol['ageGroup']['name'],
-            'displayName' => $protocol['displayName'],
-            'fullName' => $protocol['fullName'],
-            'full_name' => $protocol['ageGroup']['full_name'] ?? $protocol['ageGroup']['name'],
-            'number' => $protocol['number'],
-            'minAge' => $protocol['ageGroup']['min_age'],
-            'maxAge' => $protocol['ageGroup']['max_age']
-        ];
     }
-
-    // Преобразуем в массив
-    $result = array_values($groupedStructure);
     
-    error_log("get_protocols_structure.php: сгруппировано в " . count($result) . " дисциплин");
-    error_log("get_protocols_structure.php: результат: " . json_encode($result));
-
-    $response = [
+    echo json_encode([
         'success' => true,
-        'structure' => $result,
-        'totalProtocols' => count($structure),
-        'totalDisciplines' => count($result)
-    ];
+        'protocols' => $protocolsStructure,
+        'total_protocols' => count($protocolsStructure),
+        'event' => [
+            'id' => $event['oid'],
+            'name' => $event['meroname'],
+            'date' => $event['merodata'],
+            'status' => $event['status']
+        ]
+    ], JSON_UNESCAPED_UNICODE);
     
-    error_log("get_protocols_structure.php: отправляем ответ: " . json_encode($response));
-    echo json_encode($response);
-
 } catch (Exception $e) {
     error_log("Ошибка получения структуры протоколов: " . $e->getMessage());
     http_response_code(500);
     echo json_encode([
         'success' => false,
-        'message' => 'Ошибка получения структуры протоколов: ' . $e->getMessage()
-    ]);
+        'message' => $e->getMessage()
+    ], JSON_UNESCAPED_UNICODE);
 }
 ?> 
