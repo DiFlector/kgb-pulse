@@ -79,24 +79,28 @@ try {
     // Фильтруем протоколы по типу
     $filteredProtocols = [];
     foreach ($allProtocols as $protocolData) {
+        // Извлекаем данные из структуры JSON
+        $data = $protocolData['data'] ?? $protocolData;
+        
+        // Проверяем наличие участников
+        if (!isset($data['participants']) || !is_array($data['participants']) || count($data['participants']) === 0) {
+            continue; // Пропускаем пустые протоколы
+        }
+        
         if ($protocolType === 'start') {
             // Для стартовых протоколов - все непустые
-            if ($protocolData['participants'] && count($protocolData['participants']) > 0) {
-                $filteredProtocols[] = $protocolData;
-            }
+            $filteredProtocols[] = $data;
         } else {
             // Для финишных протоколов - только заполненные
-            if ($protocolData['participants'] && count($protocolData['participants']) > 0) {
-                $isComplete = true;
-                foreach ($protocolData['participants'] as $participant) {
-                    if (empty($participant['place']) || empty($participant['finishTime'])) {
-                        $isComplete = false;
-                        break;
-                    }
+            $isComplete = true;
+            foreach ($data['participants'] as $participant) {
+                if (empty($participant['place']) || empty($participant['finishTime'])) {
+                    $isComplete = false;
+                    break;
                 }
-                if ($isComplete) {
-                    $filteredProtocols[] = $protocolData;
-                }
+            }
+            if ($isComplete) {
+                $filteredProtocols[] = $data;
             }
         }
     }

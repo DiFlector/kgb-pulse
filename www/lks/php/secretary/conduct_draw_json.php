@@ -69,30 +69,25 @@ try {
             throw new Exception('Для создания нового протокола требуются все параметры: meroId, discipline, sex, distance, ageGroup');
         }
         
-        // Извлекаем возрастные границы из названия группы
-        if (preg_match('/группа\s+(\d+):\s*(\d+)-(\d+)/', $ageGroup, $matches)) {
-            $groupName = $matches[1];
-            $minAge = (int)$matches[2];
-            $maxAge = (int)$matches[3];
-        } elseif (preg_match('/группа\s+([^:]+):\s*(\d+)-(\d+)/', $ageGroup, $matches)) {
-            // Для групп типа "группа Ю1: 0-12"
-            $groupName = $matches[1];
-            $minAge = (int)$matches[2];
-            $maxAge = (int)$matches[3];
-        } else {
-            // Если не удалось распарсить, используем значения по умолчанию
-            $groupName = 'группа 1';
-            $minAge = 18;
-            $maxAge = 29;
+        // Получаем данные мероприятия для извлечения class_distance
+        $db = Database::getInstance();
+        $meroSql = "SELECT class_distance FROM meros WHERE oid = ?";
+        $meroStmt = $db->prepare($meroSql);
+        $meroStmt->execute([$meroId]);
+        $meroData = $meroStmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$meroData || !$meroData['class_distance']) {
+            throw new Exception('Не удалось получить данные мероприятия');
         }
         
-        // Получаем участников для этой группы
-        $db = Database::getInstance();
-        $participants = getParticipantsForGroup($db, $meroId, $discipline, $sex, $distance, $minAge, $maxAge);
+        $classDistance = json_decode($meroData['class_distance'], true);
+        
+        // Получаем участников для этой группы с правильной логикой
+        $participants = getParticipantsForGroupWithClassDistance($db, $meroId, $discipline, $sex, $distance, $ageGroup, $classDistance);
         
         // Создаем новый протокол
         $protocolData = [
-            'name' => $ageGroup,
+            'name' => $ageGroup, // Используем полное название группы с диапазоном возрастов
             'protocol_number' => 1,
             'participants' => $participants,
             'redisKey' => $groupKey,
@@ -292,4 +287,144 @@ function getMaxLanesForBoat($boatClass) {
         default:
             return 8; // По умолчанию 8 дорожек
     }
+}
+
+/**
+ * Получение участников для группы с использованием class_distance
+ */
+function getParticipantsForGroupWithClassDistance($db, $meroId, $boatClass, $sex, $distance, $targetAgeGroup, $classDistance) {
+    $currentYear = date('Y');
+    $yearEnd = $currentYear . '-12-31';
+    
+    $sql = "
+        SELECT 
+            u.oid, u.userid, u.fio, u.sex, u.birthdata, u.sportzvanie, u.city,
+            t.teamname, t.teamcity
+        FROM users u
+        LEFT JOIN listreg lr ON u.oid = lr.users_oid
+        LEFT JOIN teams t ON lr.teams_oid = t.oid
+        WHERE lr.meros_oid = ?
+        AND u.sex = ?
+        AND u.accessrights = 'Sportsman'
+        AND lr.status IN ('Зарегистрирован', 'Подтверждён')
+    ";
+    
+    $stmt = $db->prepare($sql);
+    $stmt->execute([$meroId, $sex]);
+    $participants = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    error_log("🔍 [CONDUCT_DRAW] Поиск участников для группы {$boatClass}_{$sex}_{$distance} (целевая группа: {$targetAgeGroup}): найдено " . count($participants) . " участников");
+    
+    $filteredParticipants = [];
+    $addedCount = 0;
+    
+    foreach ($participants as $participant) {
+        // Проверяем возраст
+        $birthDate = new DateTime($participant['birthdata']);
+        $yearEndDate = new DateTime($yearEnd);
+        $age = $yearEndDate->diff($birthDate)->y;
+        
+        // Вычисляем возрастную группу по алгоритму из class_distance
+        $calculatedAgeGroup = calculateAgeGroupFromClassDistance($age, $sex, $classDistance, $boatClass);
+        
+        // Проверяем, что участник попадает в целевую группу
+        if ($calculatedAgeGroup === $targetAgeGroup) {
+            
+            // Проверяем, что участник зарегистрирован на эту дисциплину
+            $disciplineSql = "
+                SELECT discipline 
+                FROM listreg 
+                WHERE users_oid = ? AND meros_oid = ?
+            ";
+            $disciplineStmt = $db->prepare($disciplineSql);
+            $disciplineStmt->execute([$participant['oid'], $meroId]);
+            $disciplineData = $disciplineStmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($disciplineData) {
+                $discipline = json_decode($disciplineData['discipline'], true);
+                
+                if ($discipline && isset($discipline[$boatClass])) {
+                    $addedCount++;
+                    
+                    $filteredParticipants[] = [
+                        'userId' => $participant['userid'],
+                        'userid' => $participant['userid'], // Добавляем дублирующее поле для совместимости
+                        'fio' => $participant['fio'],
+                        'sex' => $participant['sex'],
+                        'birthdata' => $participant['birthdata'],
+                        'sportzvanie' => $participant['sportzvanie'],
+                        'teamName' => $participant['teamname'] ?? '',
+                        'teamCity' => $participant['teamcity'] ?? '',
+                        'lane' => null,
+                        'water' => null,
+                        'place' => null,
+                        'finishTime' => null,
+                        'protected' => false,
+                        'addedManually' => false,
+                        'addedAt' => date('Y-m-d H:i:s')
+                    ];
+                }
+            }
+        }
+    }
+    
+    error_log("✅ [CONDUCT_DRAW] Группа {$boatClass}_{$sex}_{$distance} (целевая группа: {$targetAgeGroup}): добавлено {$addedCount} участников");
+    
+    return $filteredParticipants;
+}
+
+/**
+ * Вычисление возрастной группы по алгоритму из class_distance
+ */
+function calculateAgeGroupFromClassDistance($age, $sex, $classDistance, $class) {
+    if (!isset($classDistance[$class])) {
+        return null;
+    }
+    
+    $classData = $classDistance[$class];
+    $sexes = $classData['sex'] ?? [];
+    $ageGroups = $classData['age_group'] ?? [];
+    
+    // Находим индекс пола
+    $sexIndex = array_search($sex, $sexes);
+    if ($sexIndex === false) {
+        return null;
+    }
+    
+    // Получаем строку возрастных групп для данного пола
+    $ageGroupString = $ageGroups[$sexIndex] ?? '';
+    if (empty($ageGroupString)) {
+        return null;
+    }
+    
+    // Разбираем возрастные группы
+    $availableAgeGroups = array_map('trim', explode(',', $ageGroupString));
+    
+    foreach ($availableAgeGroups as $ageGroupString) {
+        // Разбираем группу: "группа 1: 18-29" -> ["группа 1", "18-29"]
+        $parts = explode(': ', $ageGroupString);
+        if (count($parts) !== 2) {
+            continue;
+        }
+        
+        $groupName = trim($parts[0]);
+        $ageRange = trim($parts[1]);
+        
+        // Разбираем диапазон: "18-29" -> [18, 29]
+        $ageLimits = explode('-', $ageRange);
+        if (count($ageLimits) !== 2) {
+            continue;
+        }
+        
+        $minAge = (int)$ageLimits[0];
+        $maxAge = (int)$ageLimits[1];
+        
+        // Проверяем, входит ли возраст в диапазон
+        if ($age >= $minAge && $age <= $maxAge) {
+            return $ageGroupString; // Возвращаем полное название группы
+        }
+    }
+    
+    // Если группа не найдена, возвращаем null
+    return null;
 } 

@@ -123,6 +123,7 @@ try {
                 // Проверяем, есть ли эта дисциплина в выбранных
                 if ($selectedDisciplines && is_array($selectedDisciplines)) {
                     $disciplineFound = false;
+                    
                     foreach ($selectedDisciplines as $selectedDiscipline) {
                         if (is_array($selectedDiscipline)) {
                             // Если дисциплина передана как объект
@@ -154,6 +155,7 @@ try {
                         $groupName = trim($matches[1]);
                         $minAge = (int)$matches[2];
                         $maxAge = (int)$matches[3];
+                        $fullGroupName = $ageGroup; // Полное название группы с диапазоном возрастов
                         
                         $redisKey = "protocol:{$meroId}:{$boatClass}:{$sex}:{$dist}:{$groupName}";
                         
@@ -182,7 +184,7 @@ try {
                         // $participants = assignLanesToParticipants($participants, $boatClass);
                         
                         $ageGroupData = [
-                            'name' => $groupName,
+                            'name' => $fullGroupName, // Используем полное название группы с диапазоном возрастов
                             'protocol_number' => count($protocolsData) + 1,
                             'participants' => $participants,
                             'redisKey' => $redisKey,

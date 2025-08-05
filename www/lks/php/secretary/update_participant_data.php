@@ -2,6 +2,7 @@
 session_start();
 require_once __DIR__ . '/../common/Auth.php';
 require_once __DIR__ . '/../db/Database.php';
+require_once __DIR__ . '/../common/JsonProtocolManager.php';
 
 // Включаем вывод ошибок для отладки
 error_reporting(E_ALL);
@@ -103,6 +104,54 @@ try {
         WHERE users_oid = ? AND meros_oid = ?
     ");
     $stmt->execute([json_encode($discipline), $userOid, $meroId]);
+    
+    // Обновляем JSON протоколы, если это поле финишных результатов
+    if ($field === 'place' || $field === 'finishTime') {
+        try {
+            $protocolManager = JsonProtocolManager::getInstance();
+            
+            // Преобразуем groupKey в redisKey
+            // groupKey приходит в формате "protocol:1:K-1:М:200:группа Ю1"
+            // Нужно убрать префикс "protocol:" и использовать как есть
+            if (strpos($groupKey, 'protocol:') === 0) {
+                $redisKey = $groupKey; // Уже в правильном формате
+            } else {
+                $redisKey = "protocol:{$meroId}:" . str_replace('_', ':', $groupKey);
+            }
+            
+            // Загружаем протокол
+            $protocolData = $protocolManager->loadProtocol($redisKey);
+            
+            if ($protocolData) {
+                $data = $protocolData['data'] ?? $protocolData;
+                
+                // Обновляем данные участника в протоколе
+                foreach ($data['participants'] as &$participant) {
+                    if (($participant['userId'] ?? $participant['userid']) == $participantUserId) {
+                        if ($field === 'finishTime') {
+                            $participant['finishTime'] = $value;
+                        } elseif ($field === 'place') {
+                            $participant['place'] = $value;
+                        }
+                        break;
+                    }
+                }
+                
+                // Обновляем время изменения
+                $data['updated_at'] = date('Y-m-d H:i:s');
+                
+                // Сохраняем обновленный протокол
+                $protocolManager->updateProtocol($redisKey, $data);
+                
+                error_log("✅ [UPDATE_PARTICIPANT_DATA] JSON протокол обновлен: $redisKey");
+            } else {
+                error_log("⚠️ [UPDATE_PARTICIPANT_DATA] Протокол не найден: $redisKey");
+            }
+            
+        } catch (Exception $e) {
+            error_log("❌ [UPDATE_PARTICIPANT_DATA] Ошибка обновления JSON протокола: " . $e->getMessage());
+        }
+    }
     
     echo json_encode([
         'success' => true,

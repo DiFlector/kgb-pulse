@@ -5,7 +5,7 @@
  */
 
 require_once __DIR__ . "/../common/Auth.php";
-require_once __DIR__ . "/ProtocolManagerNew.php";
+require_once __DIR__ . "/../common/JsonProtocolManager.php";
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -76,9 +76,9 @@ try {
         }
     }
 
-    // Сохраняем результаты через менеджер протоколов
-    $protocolManager = new ProtocolManagerNew();
-    $success = $protocolManager->saveFinishResults($redisKey, $results);
+    // Сохраняем результаты через JsonProtocolManager
+    $protocolManager = JsonProtocolManager::getInstance();
+    $success = saveFinishResults($protocolManager, $redisKey, $results);
 
     if ($success) {
         echo json_encode([
@@ -101,5 +101,50 @@ try {
         'success' => false,
         'message' => 'Ошибка сервера: ' . $e->getMessage()
     ]);
+}
+
+/**
+ * Сохранение результатов финишного протокола
+ */
+function saveFinishResults($protocolManager, $redisKey, $results) {
+    try {
+        $protocolData = $protocolManager->loadProtocol($redisKey);
+        if (!$protocolData) {
+            error_log("❌ [SAVE_FINISH_RESULTS] Протокол не найден: $redisKey");
+            return false;
+        }
+        
+        // Извлекаем данные из структуры JSON
+        $data = $protocolData['data'] ?? $protocolData;
+        
+        // Обновляем только место и время
+        foreach ($results as $result) {
+            foreach ($data['participants'] as &$participant) {
+                if (($participant['userId'] ?? $participant['userid']) == $result['userid']) {
+                    $participant['finishTime'] = $result['result'] ?? null;
+                    $participant['place'] = $result['place'] ?? null;
+                    break;
+                }
+            }
+        }
+        
+        // Обновляем время изменения
+        $data['updated_at'] = date('Y-m-d H:i:s');
+        
+        // Сохраняем обновленный протокол
+        $success = $protocolManager->updateProtocol($redisKey, $data);
+        
+        if ($success) {
+            error_log("✅ [SAVE_FINISH_RESULTS] Результаты сохранены для протокола: $redisKey");
+        } else {
+            error_log("❌ [SAVE_FINISH_RESULTS] Ошибка сохранения для протокола: $redisKey");
+        }
+        
+        return $success;
+        
+    } catch (Exception $e) {
+        error_log("❌ [SAVE_FINISH_RESULTS] Ошибка сохранения результатов: " . $e->getMessage());
+        return false;
+    }
 }
 ?> 

@@ -1,92 +1,35 @@
 <?php
 /**
- * Скачивание всех протоколов в формате CSV одним файлом
- * Файл: www/lks/php/secretary/download_all_csv_protocols.php
+ * Простой тест CSV скачивания протоколов
  */
 
-require_once dirname(__DIR__, 3) . '/vendor/autoload.php';
+require_once __DIR__ . "/php/common/JsonProtocolManager.php";
+require_once __DIR__ . "/php/db/Database.php";
 
-// Вспомогательные функции для работы с датами и временем
-function extractYearFromBirthdate($birthdate) {
-    if (empty($birthdate)) return '';
-    $date = DateTime::createFromFormat('Y-m-d', $birthdate);
-    return $date ? $date->format('Y') : '';
-}
-
-function extractMinutesFromTime($time) {
-    if (empty($time)) return '';
-    $parts = explode(':', $time);
-    return isset($parts[0]) ? $parts[0] : '';
-}
-
-function extractSecondsFromTime($time) {
-    if (empty($time)) return '';
-    $parts = explode(':', $time);
-    return isset($parts[1]) ? $parts[1] : '';
-}
-
-session_start();
-
-// Проверка авторизации и прав доступа
-require_once __DIR__ . '/../common/Auth.php';
-$auth = new Auth();
-
-if (!$auth->isAuthenticated()) {
-    http_response_code(403);
-    echo 'Доступ запрещен. Пользователь не авторизован.';
-    exit();
-}
-
-if (!$auth->hasAnyRole(['Secretary', 'SuperUser', 'Admin'])) {
-    http_response_code(403);
-    echo 'Доступ запрещен. Требуются права Secretary, SuperUser или Admin.';
-    exit();
-}
-
-// Получение параметров
-$meroId = $_GET['mero_id'] ?? null;
-$protocolType = $_GET['protocol_type'] ?? 'start';
-
-if (!$meroId) {
-    http_response_code(400);
-    echo 'Не указан ID мероприятия';
-    exit();
-}
+echo "=== ТЕСТ CSV СКАЧИВАНИЯ ПРОТОКОЛОВ ===\n\n";
 
 try {
-    require_once __DIR__ . '/../db/Database.php';
-    require_once __DIR__ . '/../common/JsonProtocolManager.php';
-
-    $db = Database::getInstance();
     $protocolManager = JsonProtocolManager::getInstance();
-
-    // Получение информации о мероприятии
-    $stmt = $db->prepare("SELECT meroname, merodata FROM meros WHERE champn = ?");
-    $stmt->execute([$meroId]);
-    $mero = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!$mero) {
-        http_response_code(404);
-        echo 'Мероприятие не найдено';
-        exit();
-    }
-
-    // Получаем все протоколы для мероприятия
+    
+    // Тестируем загрузку протоколов для мероприятия с ID 1
+    $meroId = 1;
+    $protocolType = 'start';
+    
+    echo "Загружаем протоколы для мероприятия ID: $meroId\n";
     $allProtocols = $protocolManager->getEventProtocols($meroId);
     
+    echo "Найдено протоколов: " . count($allProtocols) . "\n\n";
+    
     if (empty($allProtocols)) {
-        http_response_code(404);
-        echo 'Протоколы не найдены';
-        exit();
+        echo "❌ Протоколы не найдены\n";
+        exit;
     }
-
+    
     // Фильтруем протоколы по типу и заполненности
     $filteredProtocols = [];
     foreach ($allProtocols as $groupKey => $protocolData) {
         $data = $protocolData['data'] ?? $protocolData;
-        
-        // Проверяем наличие участников
-        if (!isset($data['participants']) || !is_array($data['participants']) || count($data['participants']) === 0) {
+        if (empty($data['participants'])) {
             continue; // Пропускаем пустые протоколы
         }
 
@@ -106,25 +49,18 @@ try {
 
         $filteredProtocols[$groupKey] = $protocolData;
     }
-
+    
+    echo "Отфильтровано протоколов с участниками: " . count($filteredProtocols) . "\n\n";
+    
     if (empty($filteredProtocols)) {
-        http_response_code(400);
-        echo 'Нет протоколов для скачивания';
-        exit();
+        echo "❌ Нет протоколов для скачивания\n";
+        exit;
     }
-
-    // Очищаем буфер вывода и отправляем заголовки
-    if (ob_get_level()) ob_end_clean();
-    header('Content-Type: text/csv; charset=UTF-8');
-    header('Content-Disposition: attachment; filename="protocols_' . $protocolType . '_' . $meroId . '.csv"');
-    header('Cache-Control: max-age=0');
-    if (function_exists('mb_internal_encoding')) mb_internal_encoding('UTF-8');
-
-    // Добавляем BOM для совместимости с Excel
-    echo "\xEF\xBB\xBF";
-
+    
     // Генерируем CSV для каждого протокола
     $raceNumber = 1;
+    $csvOutput = "";
+    
     foreach ($filteredProtocols as $groupKey => $protocolData) {
         // Извлекаем данные из структуры JSON
         $data = $protocolData['data'] ?? $protocolData;
@@ -147,18 +83,21 @@ try {
         // Используем правильное название группы из data.name
         $ageGroup = $data['name'] ?? 'группа';
         
+        echo "Протокол $raceNumber: $discipline - $ageGroup\n";
+        echo "  Участников: " . count($data['participants']) . "\n";
+        
         // Заголовок протокола
         if ($protocolType === 'start') {
-            echo $raceNumber . ';;' . $discipline . ';;;' . $ageGroup . ';;;;' . "\r\n";
+            $csvOutput .= $raceNumber . ';;' . $discipline . ';;;' . $ageGroup . ';;;;' . "\r\n";
         } else {
-            echo $raceNumber . ';;' . $discipline . ';;;;;;' . $ageGroup . ';;;;' . "\r\n";
+            $csvOutput .= $raceNumber . ';;' . $discipline . ';;;;;;' . $ageGroup . ';;;;' . "\r\n";
         }
         
         // Заголовок таблицы
         if ($protocolType === 'start') {
-            echo 'СТАРТ;Время заезда;Вода;-;Номер;ФИО;Год рождения;Группа;Спортивный разряд;Спорт.организация' . "\r\n";
+            $csvOutput .= 'СТАРТ;Время заезда;Вода;-;Номер;ФИО;Год рождения;Группа;Спортивный разряд;Спорт.организация' . "\r\n";
         } else {
-            echo 'ФИНИШ;Место в заезде;Вода;-;Время прохождения;Минуты;Секунды;Номер;ФИО;Год рождения;Группа;Спортивный разряд;Спорт.организация' . "\r\n";
+            $csvOutput .= 'ФИНИШ;Место в заезде;Вода;-;Время прохождения;Минуты;Секунды;Номер;ФИО;Год рождения;Группа;Спортивный разряд;Спорт.организация' . "\r\n";
         }
 
         // Данные участников
@@ -193,23 +132,50 @@ try {
                            ($participant['sportzvanie'] ?? 'Б/р') . ';' . 
                            ($participant['city'] ?? 'Москва');
                 }
-                echo $row . "\r\n";
+                $csvOutput .= $row . "\r\n";
             } else {
                 if ($protocolType === 'start') {
-                    echo ';;' . ($lane - 1) . ';-;;;;;;' . "\r\n";
+                    $csvOutput .= ';;' . ($lane - 1) . ';-;;;;;;' . "\r\n";
                 } else {
-                    echo ';;' . ($lane - 1) . ';-;;;;;;;' . "\r\n";
+                    $csvOutput .= ';;' . ($lane - 1) . ';-;;;;;;;' . "\r\n";
                 }
             }
         }
         
         $raceNumber++;
     }
-
-    exit;
-
+    
+    echo "\n✅ CSV протоколы сгенерированы успешно\n";
+    echo "Размер вывода: " . strlen($csvOutput) . " байт\n";
+    
+    // Показываем первые 1000 символов для проверки
+    echo "Первые 1000 символов:\n";
+    echo substr($csvOutput, 0, 1000) . "\n";
+    
 } catch (Exception $e) {
-    http_response_code(500);
-    echo 'Ошибка создания протоколов: ' . $e->getMessage();
+    echo "❌ Ошибка: " . $e->getMessage() . "\n";
+    echo "Файл: " . $e->getFile() . "\n";
+    echo "Строка: " . $e->getLine() . "\n";
 }
+
+// Вспомогательные функции
+function extractYearFromBirthdate($birthdate) {
+    if (empty($birthdate)) return '';
+    $parts = explode('-', $birthdate);
+    return isset($parts[0]) ? $parts[0] : '';
+}
+
+function extractMinutesFromTime($time) {
+    if (empty($time)) return '';
+    $parts = explode(':', $time);
+    return isset($parts[1]) ? $parts[1] : '';
+}
+
+function extractSecondsFromTime($time) {
+    if (empty($time)) return '';
+    $parts = explode(':', $time);
+    return isset($parts[2]) ? $parts[2] : '';
+}
+
+echo "\n=== ТЕСТ ЗАВЕРШЕН ===\n";
 ?> 

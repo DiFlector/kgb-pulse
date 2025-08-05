@@ -1966,47 +1966,26 @@ class ProtocolsManager {
             return;
         }
         
+        // Определяем тип протокола (стартовый или финишный)
+        const isFinishProtocol = table.closest('#finish-protocols') !== null;
+        const groupKey = this.getTableGroupKey(table);
+        
+        console.log('Тип протокола:', isFinishProtocol ? 'финишный' : 'стартовый');
+        console.log('groupKey:', groupKey);
+        
         // Добавляем данные участников
         participants.forEach((participant, index) => {
             console.log(`Добавляем участника ${index + 1}:`, participant);
-            const row = this.createParticipantRow(participant);
+            
+            // Используем правильную функцию createParticipantRow с groupKey
+            const row = this.createParticipantRow(participant, index + 1, groupKey);
             tbody.appendChild(row);
         });
         
         console.log(`Добавлено ${participants.length} участников в таблицу`);
     }
     
-    createParticipantRow(participant) {
-        console.log('Второй createParticipantRow вызван с данными:', participant);
-        console.log('userid:', participant.userid);
-        console.log('userId:', participant.userId);
-        console.log('fio:', participant.fio);
-        console.log('birthdata:', participant.birthdata);
-        console.log('sportzvanie:', participant.sportzvanie);
-        console.log('water:', participant.water);
-        console.log('lane:', participant.lane);
-        
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td>${participant.lane || participant.water || '-'}</td>
-            <td>${participant.userId || participant.userid || '-'}</td>
-            <td>${participant.fio || '-'}</td>
-            <td>${participant.birthYear || participant.birthdata || '-'}</td>
-            <td>${participant.ageGroup || '-'}</td>
-            <td>${participant.sportzvanie || '-'}</td>
-            <td>
-                <button class="btn btn-sm btn-outline-primary edit-participant" data-id="${participant.registration_id}">
-                    <i class="fas fa-edit"></i>
-                </button>
-                <button class="btn btn-sm btn-outline-danger delete-participant" data-id="${participant.registration_id}">
-                    <i class="fas fa-trash"></i>
-                </button>
-            </td>
-        `;
-        
-        console.log('Создана строка участника:', row.innerHTML);
-        return row;
-    }
+
 }
 
 // Инициализация при загрузке страницы

@@ -165,6 +165,7 @@ try {
                                 'sex' => $sex,
                                 'distance' => $distance,
                                 'ageGroup' => $ageGroup,
+                                'name' => $ageGroup, // Используем полное название группы с диапазоном возрастов
                                 'type' => 'start',
                                 'participants' => [],
                                 'created_at' => date('Y-m-d H:i:s'),
@@ -242,6 +243,7 @@ try {
         $finishProtocolKey = "finish_{$protocolKey}";
         $finishProtocolData = $protocolData;
         $finishProtocolData['type'] = 'finish';
+        $finishProtocolData['name'] = $protocolData['name']; // Сохраняем правильное название группы
         $finishProtocolData['redisKey'] = $finishProtocolKey;
         
         if ($redis) {

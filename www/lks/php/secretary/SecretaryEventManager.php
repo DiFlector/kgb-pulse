@@ -174,7 +174,7 @@ class SecretaryEventManager {
                 
                 // Создаем возрастную группу для JavaScript
                 $ageGroupData = [
-                    'name' => $ageGroup,
+                    'name' => $ageGroup, // Используем полное название группы с диапазоном возрастов
                     'protocol_number' => count($protocol['ageGroups']) + 1,
                     'redisKey' => "protocol:{$this->meroOid}:{$discipline['class']}:{$discipline['sex']}:{$discipline['distance']}:{$ageGroup}",
                     'protected' => false,

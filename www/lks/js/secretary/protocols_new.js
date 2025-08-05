@@ -90,16 +90,8 @@ class ProtocolsManager {
         }
 
         try {
-            console.log('Загружаем данные протоколов для мероприятия:', this.currentMeroId);
-            
-            console.log('Отправляем запрос к API с данными:', {
-                meroId: this.currentMeroId
-            });
-            
-            console.log('Отправляем запрос к load_protocols_data.php с данными:', {
-                meroId: this.currentMeroId,
-                url: '/lks/php/secretary/load_protocols_data.php'
-            });
+            // Получаем выбранные дисциплины
+            const selectedDisciplines = this.getSelectedDisciplines();
             
             const response = await fetch('/lks/php/secretary/load_protocols_data.php', {
                 method: 'POST',
@@ -107,23 +99,17 @@ class ProtocolsManager {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    meroId: this.currentMeroId
+                    meroId: this.currentMeroId,
+                    disciplines: selectedDisciplines
                 })
             });
 
-            console.log('Статус ответа:', response.status);
-            console.log('Заголовки ответа:', response.headers);
-
             // Проверяем тип контента
             const contentType = response.headers.get('content-type');
-            console.log('Content-Type:', contentType);
 
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error('Ошибка HTTP:', response.status, errorText);
-                console.error('URL запроса:', response.url);
-                console.error('Статус ответа:', response.status);
-                console.error('Заголовки ответа:', Object.fromEntries(response.headers.entries()));
                 
                 if (response.status === 401) {
                     this.showNotification('Ошибка авторизации. Пожалуйста, войдите в систему.', 'error');
@@ -150,28 +136,11 @@ class ProtocolsManager {
             }
 
             const data = await response.json();
-            console.log('Ответ от API загрузки данных:', data);
-            console.log('Статус ответа:', response.status);
-            console.log('Заголовки ответа:', Object.fromEntries(response.headers.entries()));
             
             if (data.success) {
-                console.log('✅ [LOAD_PROTOCOLS_DATA] Данные получены успешно');
-                console.log('Количество протоколов:', data.protocols?.length || 0);
-                
-                if (data.protocols && data.protocols.length > 0) {
-                    console.log('Первый протокол:', data.protocols[0]);
-                    if (data.protocols[0].ageGroups && data.protocols[0].ageGroups.length > 0) {
-                        console.log('Первая возрастная группа:', data.protocols[0].ageGroups[0]);
-                        if (data.protocols[0].ageGroups[0].participants && data.protocols[0].ageGroups[0].participants.length > 0) {
-                            console.log('Первый участник:', data.protocols[0].ageGroups[0].participants[0]);
-                        }
-                    }
-                }
-                
                 this.protocolsData = data.protocols;
                 this.renderProtocols();
-                console.log('Протоколы загружены успешно, количество:', this.protocolsData.length);
-                this.showNotification(`Данные протоколов загружены. Протоколов: ${data.debug?.totalProtocols || this.protocolsData.length}`, 'success');
+                this.showNotification(`Данные протоколов загружены. Протоколов: ${data.protocols?.length || 0}`, 'success');
                 
                 // Синхронизируем высоту контейнеров после загрузки
                 setTimeout(() => {
@@ -609,7 +578,13 @@ class ProtocolsManager {
                     
                     html += `<div class="age-group mb-3">`;
                     html += `<div class="d-flex justify-content-between align-items-center mb-2">`;
-                    html += `<h6 class="age-title">Протокол №${ageGroup.protocol_number} - ${ageGroup.name}</h6>`;
+                    // Форматируем название группы для отображения
+                    let displayGroupName = ageGroup.name;
+                    if (displayGroupName.includes(': ')) {
+                        // Заменяем ": " на " " для более читаемого отображения
+                        displayGroupName = displayGroupName.replace(': ', ' ');
+                    }
+                    html += `<h6 class="age-title">Протокол №${ageGroup.protocol_number} - ${displayGroupName}</h6>`;
                     if (isProtected) {
                         html += `<span class="badge bg-success"><i class="fas fa-shield-alt"></i> Защищен</span>`;
                     }
@@ -1663,26 +1638,24 @@ class ProtocolsManager {
     // Получение выбранных дисциплин
     getSelectedDisciplines() {
         const disciplinesElement = document.getElementById('selected-disciplines');
-        console.log('Ищем элемент selected-disciplines:', disciplinesElement);
         
         if (disciplinesElement) {
-            console.log('Значение элемента:', disciplinesElement.value);
-            const disciplines = JSON.parse(disciplinesElement.value || '[]');
-            console.log('Получены выбранные дисциплины:', disciplines);
-            console.log('Тип disciplines:', typeof disciplines);
-            console.log('Длина массива:', disciplines.length);
+            let disciplines;
+            try {
+                disciplines = JSON.parse(disciplinesElement.value || '[]');
+            } catch (error) {
+                console.error('Ошибка парсинга дисциплин:', error);
+                disciplines = [];
+            }
             
             // Если дисциплины не выбраны, возвращаем пустой массив для загрузки всех доступных
             if (!disciplines || disciplines.length === 0) {
-                console.log('Дисциплины не выбраны, будем загружать все доступные');
                 return [];
             }
             
             // Возвращаем дисциплины как есть (они уже в правильном формате строк)
-            console.log('Возвращаем дисциплины:', disciplines);
             return disciplines;
         }
-        console.log('Элемент selected-disciplines не найден, возвращаем пустой массив для загрузки всех доступных');
         return [];
     }
 

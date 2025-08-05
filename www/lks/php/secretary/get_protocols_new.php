@@ -5,7 +5,7 @@
  */
 
 require_once __DIR__ . "/../common/Auth.php";
-require_once __DIR__ . "/ProtocolManagerNew.php";
+require_once __DIR__ . "/../common/JsonProtocolManager.php";
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -25,7 +25,7 @@ try {
         exit;
     }
 
-    $protocolManager = new ProtocolManagerNew();
+    $protocolManager = JsonProtocolManager::getInstance();
     
     // Получаем параметры запроса
     $meroId = $_GET['meroId'] ?? null;
@@ -39,37 +39,40 @@ try {
         // Формируем ответ в формате, совместимом с оригинальным интерфейсом
         $protocols = [];
         
-        foreach ($dataProtocols as $dataProtocol) {
+        foreach ($dataProtocols as $protocolData) {
+            // Извлекаем данные из структуры JSON
+            $data = $protocolData['data'] ?? $protocolData;
+            
             // Создаем стартовый протокол
             $startProtocol = [
-                'redisKey' => $dataProtocol['redisKey'],
-                'class' => $dataProtocol['class'],
-                'sex' => $dataProtocol['sex'],
-                'distance' => $dataProtocol['distance'],
-                'ageGroup' => $dataProtocol['ageGroup'],
-                'participants' => $dataProtocol['participants'],
-                'maxLanes' => $dataProtocol['maxLanes'],
-                'created_at' => $dataProtocol['created_at'],
-                'updated_at' => $dataProtocol['updated_at'],
+                'redisKey' => $data['redisKey'] ?? '',
+                'class' => $data['discipline'] ?? '',
+                'sex' => $data['sex'] ?? '',
+                'distance' => $data['distance'] ?? '',
+                'ageGroup' => $data['ageGroup'] ?? '',
+                'participants' => $data['participants'] ?? [],
+                'maxLanes' => $data['maxLanes'] ?? 10,
+                'created_at' => $data['created_at'] ?? '',
+                'updated_at' => $data['updated_at'] ?? '',
                 'type' => 'start',
-                'isDrawn' => !empty($dataProtocol['participants']),
-                'participantsCount' => count($dataProtocol['participants'])
+                'isDrawn' => !empty($data['participants']),
+                'participantsCount' => count($data['participants'] ?? [])
             ];
             
             // Создаем финишный протокол
             $finishProtocol = [
-                'redisKey' => $dataProtocol['redisKey'],
-                'class' => $dataProtocol['class'],
-                'sex' => $dataProtocol['sex'],
-                'distance' => $dataProtocol['distance'],
-                'ageGroup' => $dataProtocol['ageGroup'],
-                'participants' => $dataProtocol['participants'],
-                'maxLanes' => $dataProtocol['maxLanes'],
-                'created_at' => $dataProtocol['created_at'],
-                'updated_at' => $dataProtocol['updated_at'],
+                'redisKey' => $data['redisKey'] ?? '',
+                'class' => $data['discipline'] ?? '',
+                'sex' => $data['sex'] ?? '',
+                'distance' => $data['distance'] ?? '',
+                'ageGroup' => $data['ageGroup'] ?? '',
+                'participants' => $data['participants'] ?? [],
+                'maxLanes' => $data['maxLanes'] ?? 10,
+                'created_at' => $data['created_at'] ?? '',
+                'updated_at' => $data['updated_at'] ?? '',
                 'type' => 'finish',
-                'isDrawn' => !empty($dataProtocol['participants']),
-                'participantsCount' => count($dataProtocol['participants'])
+                'isDrawn' => !empty($data['participants']),
+                'participantsCount' => count($data['participants'] ?? [])
             ];
             
             $protocols[] = $startProtocol;
@@ -84,40 +87,26 @@ try {
         
     } elseif ($redisKey) {
         // Получаем конкретный протокол
-        $dataProtocol = $protocolManager->getProtocol($redisKey);
+        $protocolData = $protocolManager->loadProtocol($redisKey);
         
-        if (!$dataProtocol) {
+        if (!$protocolData) {
             http_response_code(404);
             echo json_encode(['success' => false, 'message' => 'Протокол не найден']);
             exit;
         }
         
-        // Определяем тип протокола из параметра
-        $type = ($protocolType === 'finish') ? 'finish' : 'start';
-        
-        $protocol = [
-            'redisKey' => $dataProtocol['redisKey'],
-            'class' => $dataProtocol['class'],
-            'sex' => $dataProtocol['sex'],
-            'distance' => $dataProtocol['distance'],
-            'ageGroup' => $dataProtocol['ageGroup'],
-            'participants' => $dataProtocol['participants'],
-            'maxLanes' => $dataProtocol['maxLanes'],
-            'created_at' => $dataProtocol['created_at'],
-            'updated_at' => $dataProtocol['updated_at'],
-            'type' => $type,
-            'isDrawn' => !empty($dataProtocol['participants']),
-            'participantsCount' => count($dataProtocol['participants'])
-        ];
+        // Извлекаем данные из структуры JSON
+        $data = $protocolData['data'] ?? $protocolData;
         
         echo json_encode([
             'success' => true,
-            'protocol' => $protocol
+            'protocol' => $data
         ]);
         
     } else {
         http_response_code(400);
         echo json_encode(['success' => false, 'message' => 'Не указан meroId или redisKey']);
+        exit;
     }
     
 } catch (Exception $e) {

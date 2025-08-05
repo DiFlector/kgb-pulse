@@ -304,7 +304,7 @@ class JsonProtocolManager {
                     $filename = basename($filepath, '.json');
                     $redisKey = $this->reconstructRedisKey($meroId, $filename);
                     
-                    $protocols[$redisKey] = $protocolData['data'];
+                    $protocols[$redisKey] = $protocolData; // Возвращаем полную структуру протокола
                     
                 } catch (Exception $e) {
                     error_log("❌ [JSON_PROTOCOL] Ошибка обработки файла $filepath: " . $e->getMessage());

@@ -89,10 +89,11 @@ include '../includes/header.php';
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3 mb-0 text-gray-800">
         <i class="bi bi-pencil-square me-2"></i>Редактирование регистрации
+        <small class="text-muted d-block mt-1">Из очереди спортсменов</small>
     </h1>
     <div class="btn-group">
-        <a href="registrations.php" class="btn btn-secondary">
-            <i class="bi bi-arrow-left"></i> Назад к регистрациям
+        <a href="javascript:void(0)" class="btn btn-secondary" onclick="goBack()">
+            <i class="bi bi-arrow-left"></i> Назад к очереди
         </a>
     </div>
 </div>
@@ -201,7 +202,7 @@ include '../includes/header.php';
 
                     <!-- Кнопки -->
                     <div class="d-flex justify-content-end">
-                        <button type="button" class="btn btn-secondary me-2" onclick="location.href='registrations.php'">
+                        <button type="button" class="btn btn-secondary me-2" onclick="goBack()">
                             Отмена
                         </button>
                         <button type="submit" class="btn btn-primary">
@@ -275,7 +276,7 @@ async function loadRegistration() {
         document.getElementById('errorInfo').style.display = 'none';
         
         // Используем новый API с параметром id
-        const response = await fetch(`/lks/php/organizer/edit_registration.php?id=${oid}`);
+        const response = await fetch(`/lks/php/organizer/get_registration.php?id=${oid}`);
         const data = await response.json();
         
         if (data.success) {
@@ -302,6 +303,8 @@ function displayRegistrationData(data) {
     document.getElementById('participantName').textContent = reg.fio || 'Не указано';
     document.getElementById('participantEmail').textContent = reg.email || 'Не указано';
     document.getElementById('participantPhone').textContent = reg.telephone || 'Не указано';
+    document.getElementById('participantSex').textContent = reg.sex || 'Не указано';
+    document.getElementById('participantCity').textContent = reg.city || 'Не указано';
     
     // Информация о мероприятии
     if (document.getElementById('eventName')) {
@@ -408,7 +411,7 @@ function displayClassDistanceOptions(eventClasses, currentSelection, data) {
                             <div class="sex-options">
         `;
         
-        // Опции пола
+        // Опции пола с учетом пола спортсмена
         if (classData.sex) {
             let sexOptions = [];
             
@@ -424,17 +427,38 @@ function displayClassDistanceOptions(eventClasses, currentSelection, data) {
                 sexOptions = Object.values(classData.sex).flat();
             }
             
+            // Получаем пол спортсмена из данных регистрации
+            const participantSex = registrationData?.registration?.sex || '';
+            
             sexOptions.forEach(sex => {
+                // Проверяем, можно ли спортсмену выбирать этот пол
+                let canSelect = true;
+                let disabledReason = '';
+                
+                if (participantSex && sex !== 'MIX') {
+                    if (participantSex === 'М' && sex === 'Ж') {
+                        canSelect = false;
+                        disabledReason = ' (только для женщин)';
+                    } else if (participantSex === 'Ж' && sex === 'М') {
+                        canSelect = false;
+                        disabledReason = ' (только для мужчин)';
+                    }
+                }
+                
                 const sexSelected = isSelected && selectedClasses[className].sex && 
                                   selectedClasses[className].sex.includes(sex);
+                
                 html += `
                     <div class="form-check form-check-inline">
                         <input class="form-check-input sex-option" 
                                type="checkbox" 
                                data-class="${className}" 
                                value="${sex}"
-                               ${sexSelected ? 'checked' : ''}>
-                        <label class="form-check-label">${sex}</label>
+                               ${sexSelected ? 'checked' : ''}
+                               ${!canSelect ? 'disabled' : ''}>
+                        <label class="form-check-label ${!canSelect ? 'text-muted' : ''}">
+                            ${sex}${disabledReason}
+                        </label>
                     </div>
                 `;
             });
@@ -569,8 +593,8 @@ function collectSelectedClassDistance() {
             dist: []
         };
         
-        // Собираем выбранные полы
-        classOption.querySelectorAll('.sex-option:checked').forEach(sexCheckbox => {
+        // Собираем выбранные полы (только доступные)
+        classOption.querySelectorAll('.sex-option:checked:not(:disabled)').forEach(sexCheckbox => {
             selected[className].sex.push(sexCheckbox.value);
         });
         
@@ -643,7 +667,7 @@ document.getElementById('editForm').addEventListener('submit', async function(e)
     try {
         document.getElementById('loadingOverlay').style.display = 'flex';
         
-        const response = await fetch('/lks/php/organizer/edit_registration.php', {
+        const response = await fetch('/lks/php/organizer/update_registration.php', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -655,10 +679,11 @@ document.getElementById('editForm').addEventListener('submit', async function(e)
         
         if (result.success) {
             showNotification('Регистрация успешно обновлена', 'success');
-            // Перенаправляем обратно к списку регистраций через 2 секунды
-            setTimeout(() => {
-                location.href = 'registrations.php';
-            }, 2000);
+                    // Перенаправляем обратно к списку регистраций через 2 секунды
+        setTimeout(() => {
+            const returnUrl = new URLSearchParams(window.location.search).get('return') || 'registrations.php';
+            location.href = returnUrl;
+        }, 2000);
         } else {
             throw new Error(result.message || 'Ошибка сохранения');
         }
@@ -698,6 +723,12 @@ function showNotification(message, type = 'info') {
             notification.remove();
         }
     }, 5000);
+}
+
+// Функция возврата с учетом параметра return
+function goBack() {
+    const returnUrl = new URLSearchParams(window.location.search).get('return') || 'registrations.php';
+    location.href = returnUrl;
 }
 </script>
 
