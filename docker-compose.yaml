@@ -37,11 +37,6 @@ services:
       - ./composer.lock:/var/www/html/composer.lock
     working_dir: /var/www/html
     environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - SESSION_HANDLER=redis
-      - SESSION_SAVE_HANDLER=redis
-      - SESSION_SAVE_PATH="tcp://redis:6379"
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_NAME=pulse_rowing_db
@@ -52,8 +47,6 @@ services:
       - APP_URL=http://localhost
     depends_on:
       postgres:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "php-fpm", "-t"]
@@ -98,20 +91,6 @@ services:
     networks:
       - app-network
 
-  redis:
-    image: redis:latest
-    ports:
-      - "6379:6379"
-    volumes:
-      - ./data/redis:/data
-    networks:
-      - app-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
   cron-auto-close:
     build:
       context: ./images/cron
@@ -123,8 +102,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     networks:
       - app-network
     environment:
@@ -133,8 +110,6 @@ services:
       - DB_NAME=pulse_rowing_db
       - DB_USER=pulse_user
       - DB_PASSWORD=pulse_password
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
 
 networks:
   app-network:
@@ -143,5 +118,4 @@ networks:
 volumes:
   pgdata:
   pgadmin:
-  nginx_cache:
-  redis_data: 
+  nginx_cache: 

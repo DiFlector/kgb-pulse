@@ -415,10 +415,9 @@ class ProtocolsManager {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    meroId: this.currentMeroId,
                     groupKey: groupKey,
                     userId: userId,
-                    newLane: newLane
+                    lane: newLane
                 })
             });
             
@@ -427,6 +426,9 @@ class ProtocolsManager {
             if (data.success) {
                 // Обновляем оригинальное значение
                 input.dataset.originalLane = newLane;
+                
+                // Обновляем данные в памяти
+                this.updateParticipantLaneInMemory(groupKey, userId, newLane);
                 
                 // Показываем уведомление об успехе
                 this.showSuccess(data.message);
@@ -456,6 +458,31 @@ class ProtocolsManager {
             input.value = originalLane;
             this.showError('Ошибка обновления дорожки');
         }
+    }
+
+    // Обновление дорожки участника в памяти
+    updateParticipantLaneInMemory(groupKey, userId, newLane) {
+        if (!this.protocolsData) return;
+        
+        // Ищем протокол с нужным groupKey
+        for (let protocol of this.protocolsData) {
+            if (protocol.ageGroups) {
+                for (let ageGroup of protocol.ageGroups) {
+                    if (ageGroup.redisKey === groupKey && ageGroup.participants) {
+                        // Ищем участника и обновляем его дорожку
+                        for (let participant of ageGroup.participants) {
+                            if (participant.userId == userId) {
+                                participant.lane = newLane;
+                                participant.water = newLane; // Обновляем также water
+                                console.log(`✅ Обновлена дорожка участника ${participant.fio} на ${newLane} в памяти`);
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        console.warn(`⚠️ Участник с userId=${userId} не найден в памяти для groupKey=${groupKey}`);
     }
 
     // Проведение жеребьевки для конкретного протокола

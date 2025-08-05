@@ -19,9 +19,6 @@ RUN apt-get update && apt-get install -y \
     && docker-php-ext-install pdo pdo_pgsql pgsql \
     && docker-php-ext-install mbstring exif pcntl bcmath gd zip curl
 
-# Устанавливаем Redis расширение
-RUN pecl install redis && docker-php-ext-enable redis
-
 # Очищаем кэш apt
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -61,7 +58,12 @@ RUN chown -R www-data:www-data /var/www/html
 # Переключаемся на пользователя www-data
 USER www-data
 
-# Открываем порт 9000
+# Создаем директории для файлов
+RUN mkdir -p /var/www/html/lks/files/json/protocols \
+    && chown -R www-data:www-data /var/www/html/lks/files \
+    && chmod -R 755 /var/www/html/lks/files
+
+# Открываем порт
 EXPOSE 9000
 
 # Запускаем PHP-FPM

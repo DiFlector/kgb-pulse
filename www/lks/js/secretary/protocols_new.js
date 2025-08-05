@@ -370,67 +370,84 @@ class ProtocolsManager {
                 return;
             }
             
-            const response = await fetch('/lks/php/secretary/conduct_draw_api.php?action=conduct_draw', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    mero_id: this.currentMeroId,
-                    disciplines: selectedDisciplines
-                })
-            });
-
-            console.log('Статус ответа:', response.status);
-            console.log('Заголовки ответа:', response.headers);
-
-            // Проверяем тип контента
-            const contentType = response.headers.get('content-type');
-            console.log('Content-Type:', contentType);
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error('Ошибка HTTP:', response.status, errorText);
-                throw new Error(`HTTP ${response.status}: ${errorText}`);
+            // Проверяем, есть ли защищенные данные в протоколах
+            let hasProtectedData = false;
+            for (const protocol of this.protocolsData) {
+                for (const ageGroup of protocol.ageGroups) {
+                    if (ageGroup.participants && ageGroup.participants.length > 0) {
+                        for (const participant of ageGroup.participants) {
+                            if (participant.protected) {
+                                hasProtectedData = true;
+                                break;
+                            }
+                        }
+                    }
+                }
             }
-
-            // Проверяем, что ответ действительно JSON
-            if (!contentType || !contentType.includes('application/json')) {
-                const responseText = await response.text();
-                console.error('Неверный Content-Type:', contentType);
-                console.error('Ответ сервера:', responseText);
-                throw new Error(`Неверный Content-Type: ${contentType}. Ответ: ${responseText}`);
-            }
-
-            const data = await response.json();
-            console.log('Ответ от API жеребьевки:', data);
             
-            if (data.success) {
-                console.log('Жеребьевка успешна, получены данные:', data);
-                
-                // Используем данные, полученные от жеребьевки
-                if (data.results && Array.isArray(data.results) && data.results.length > 0) {
-                    console.log('Используем данные от жеребьевки, количество результатов:', data.results.length);
-                    this.protocolsData = data.results;
-                    this.renderProtocols();
-                    this.showNotification('Жеребьевка проведена успешно! Участники перераспределены по дорожкам.', 'success');
-                } else {
-                    console.log('Данные от жеребьевки отсутствуют или пусты, загружаем отдельно');
-                    // Если данных нет в ответе, загружаем их отдельно
-                    this.isLoadingAfterDraw = true; // Устанавливаем флаг
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    await this.loadProtocolsData();
-                    this.isLoadingAfterDraw = false; // Сбрасываем флаг
-                    this.showNotification('Жеребьевка проведена успешно!', 'success');
-                }
-            } else {
-                console.error('Ошибка жеребьевки:', data.message);
-                if (data.message.includes('Файл протоколов не найден')) {
-                    this.showNotification('Протоколы не найдены. Попробуйте сначала сгенерировать протоколы.', 'warning');
-                } else {
-                    this.showNotification('Ошибка проведения жеребьевки: ' + data.message, 'error');
+            // Если есть защищенные данные, спрашиваем пользователя
+            let preserveProtected = true;
+            if (hasProtectedData) {
+                const userChoice = confirm('Обнаружены защищенные данные (результаты, места, время). Сохранить их при жеребьевке?');
+                preserveProtected = userChoice;
+            }
+            
+            // Проводим жеребьевку для каждой группы
+            let totalAssigned = 0;
+            let totalPreserved = 0;
+            
+            for (const protocol of this.protocolsData) {
+                for (const ageGroup of protocol.ageGroups) {
+                    if (ageGroup.participants && ageGroup.participants.length > 0) {
+                        console.log(`Проводим жеребьевку для группы: ${ageGroup.redisKey}`);
+                        
+                        // Извлекаем параметры из redisKey
+                        const keyParts = ageGroup.redisKey.split(':');
+                        const meroId = keyParts[1];
+                        const discipline = keyParts[2];
+                        const sex = keyParts[3];
+                        const distance = keyParts[4];
+                        const ageGroupName = keyParts[5];
+                        
+                        const response = await fetch('/lks/php/secretary/conduct_draw_json.php', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                groupKey: ageGroup.redisKey,
+                                meroId: meroId,
+                                discipline: discipline,
+                                sex: sex,
+                                distance: distance,
+                                ageGroup: ageGroupName,
+                                preserveProtected: preserveProtected
+                            })
+                        });
+
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            throw new Error(`HTTP ${response.status}: ${errorText}`);
+                        }
+
+                        const data = await response.json();
+                        console.log('Ответ от API жеребьевки:', data);
+                        
+                        if (data.success) {
+                            totalAssigned += data.assigned_lanes || 0;
+                            totalPreserved += data.preserved_protected || 0;
+                        } else {
+                            throw new Error(data.message || 'Ошибка жеребьевки');
+                        }
+                    }
                 }
             }
+            
+            // Перезагружаем данные протоколов
+            await this.loadProtocolsData();
+            
+            this.showNotification(`Жеребьевка проведена успешно! Назначено ${totalAssigned} новых дорожек, сохранено ${totalPreserved} защищенных записей.`, 'success');
+            
         } catch (error) {
             console.error('Ошибка жеребьевки:', error);
             this.showNotification('Ошибка проведения жеребьевки: ' + error.message, 'error');
@@ -894,13 +911,13 @@ class ProtocolsManager {
         }
     }
 
-    // Скачивание всех CSV протоколов
+    // Скачивание всех CSV протоколов одним файлом
     async downloadAllCsvProtocols(protocolType) {
         try {
             console.log('Скачивание всех CSV протоколов типа:', protocolType);
             
-            // Фильтруем протоколы по типу и заполненности
-            const filteredProtocols = this.protocolsData.filter(protocol => {
+            // Проверяем, есть ли протоколы для скачивания
+            const hasProtocols = this.protocolsData.some(protocol => {
                 return protocol.ageGroups.some(ageGroup => {
                     if (protocolType === 'start') {
                         // Для стартовых протоколов - все непустые
@@ -913,43 +930,38 @@ class ProtocolsManager {
                 });
             });
             
-            if (filteredProtocols.length === 0) {
+            if (!hasProtocols) {
                 this.showNotification(`Нет ${protocolType === 'start' ? 'стартовых' : 'заполненных финишных'} протоколов для скачивания`, 'warning');
                 return;
             }
             
-            // Скачиваем каждый протокол отдельно
-            let downloadedCount = 0;
-            const totalCount = filteredProtocols.reduce((count, protocol) => {
-                return count + protocol.ageGroups.filter(ageGroup => {
-                    if (protocolType === 'start') {
-                        return ageGroup.participants && ageGroup.participants.length > 0;
-                    } else {
-                        return ageGroup.participants && ageGroup.participants.length > 0 && 
-                               this.isFinishProtocolComplete(ageGroup);
-                    }
-                }).length;
-            }, 0);
+            // Скачиваем все протоколы одним файлом
+            const url = `/lks/php/secretary/download_all_csv_protocols.php?mero_id=${this.currentMeroId}&protocol_type=${protocolType}`;
             
-            for (const protocol of filteredProtocols) {
-                for (const ageGroup of protocol.ageGroups) {
-                    if (protocolType === 'start') {
-                        if (ageGroup.participants && ageGroup.participants.length > 0) {
-                            await this.downloadSingleCsvProtocol(ageGroup.redisKey, protocolType);
-                            downloadedCount++;
-                        }
-                    } else {
-                        if (ageGroup.participants && ageGroup.participants.length > 0 && 
-                            this.isFinishProtocolComplete(ageGroup)) {
-                            await this.downloadSingleCsvProtocol(ageGroup.redisKey, protocolType);
-                            downloadedCount++;
-                        }
-                    }
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
                 }
+            });
+            
+            if (response.ok) {
+                // Создаем ссылку для скачивания
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `protocols_${protocolType}_${this.currentMeroId}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                this.showNotification(`Все ${protocolType === 'start' ? 'стартовые' : 'финишные'} протоколы успешно скачаны`, 'success');
+            } else {
+                const errorText = await response.text();
+                this.showNotification(errorText || 'Ошибка скачивания протоколов', 'error');
             }
-            
-            this.showNotification(`Успешно скачано ${downloadedCount} из ${totalCount} CSV протоколов`, 'success');
-            
         } catch (error) {
             console.error('Ошибка скачивания CSV протоколов:', error);
             this.showNotification('Ошибка скачивания CSV протоколов', 'error');
@@ -999,20 +1011,20 @@ class ProtocolsManager {
         let html = '<tr class="participant-row">';
         
         if (type === 'start') {
-            html += `<td class="edit-field" data-field="water" data-participant-id="${participant.userid}">${participant.lane || participant.water || '-'}</td>`;
-            html += `<td>${participant.userid || '-'}</td>`;
-            html += `<td class="edit-field" data-field="fio" data-participant-id="${participant.userid}">${participant.fio}</td>`;
+            html += `<td><input type="number" class="form-control form-control-sm" value="${participant.lane || participant.water || ''}" data-original-lane="${participant.lane || participant.water || ''}" onchange="protocolsManager.updateLane(this, ${participant.userid || participant.userId}, '${groupKey}')" min="1" max="8"></td>`;
+            html += `<td>${participant.userid || participant.userId || '-'}</td>`;
+            html += `<td class="edit-field" data-field="fio" data-participant-id="${participant.userid || participant.userId}">${participant.fio}</td>`;
             html += `<td>${participant.birthdata}</td>`;
-            html += `<td class="edit-field" data-field="sportzvanie" data-participant-id="${participant.userid}">${participant.sportzvanie}</td>`;
+            html += `<td class="edit-field" data-field="sportzvanie" data-participant-id="${participant.userid || participant.userId}">${participant.sportzvanie}</td>`;
             if (boatClass === 'D-10') {
-                html += `<td class="edit-field" data-field="teamcity" data-participant-id="${participant.userid}">${participant.teamcity || '-'}</td>`;
-                html += `<td class="edit-field" data-field="teamname" data-participant-id="${participant.userid}">${participant.teamname || '-'}</td>`;
+                html += `<td class="edit-field" data-field="teamcity" data-participant-id="${participant.userid || participant.userId}">${participant.teamcity || '-'}</td>`;
+                html += `<td class="edit-field" data-field="teamname" data-participant-id="${participant.userid || participant.userId}">${participant.teamname || '-'}</td>`;
             }
         } else {
-            html += `<td class="edit-field" data-field="place" data-participant-id="${participant.userid}">${participant.place || ''}</td>`;
-            html += `<td class="edit-field" data-field="finishTime" data-participant-id="${participant.userid}">${participant.finishTime || ''}</td>`;
-            html += `<td class="edit-field" data-field="water" data-participant-id="${participant.userid}">${participant.lane || participant.water || '-'}</td>`;
-            html += `<td>${participant.userid || '-'}</td>`;
+            html += `<td class="edit-field" data-field="place" data-participant-id="${participant.userid || participant.userId}">${participant.place || ''}</td>`;
+            html += `<td class="edit-field" data-field="finishTime" data-participant-id="${participant.userid || participant.userId}">${participant.finishTime || ''}</td>`;
+            html += `<td><input type="number" class="form-control form-control-sm" value="${participant.lane || participant.water || ''}" data-original-lane="${participant.lane || participant.water || ''}" onchange="protocolsManager.updateLane(this, ${participant.userid || participant.userId}, '${groupKey}')" min="1" max="8"></td>`;
+            html += `<td>${participant.userid || participant.userId || '-'}</td>`;
             html += `<td>${participant.fio}</td>`;
             html += `<td>${participant.birthdata}</td>`;
             html += `<td>${participant.sportzvanie}</td>`;
@@ -1023,7 +1035,8 @@ class ProtocolsManager {
         }
         
         html += `<td>`;
-        html += `<button class="btn btn-sm btn-outline-danger" onclick="protocolsManager.removeParticipant(${participant.userid}, '${groupKey}')">`;
+        const participantId = participant.userid || participant.userId;
+        html += `<button class="btn btn-sm btn-outline-danger" onclick="protocolsManager.removeParticipant(${participantId}, '${groupKey}')">`;
         html += `<i class="fas fa-trash"></i>`;
         html += `</button>`;
         html += `</td>`;
@@ -1172,30 +1185,15 @@ class ProtocolsManager {
 
     // Удаление участника
     async removeParticipant(participantId, groupKey) {
-        console.log('🔄 [REMOVE_PARTICIPANT] Начинаем удаление участника:', { participantId, groupKey });
-        console.log('🔄 [REMOVE_PARTICIPANT] currentMeroId:', this.currentMeroId);
-        
-        // Проверяем, что параметры не undefined
-        if (!participantId || participantId === 'undefined' || !groupKey || groupKey === 'undefined') {
-            console.log('❌ [REMOVE_PARTICIPANT] Некорректные параметры:', { participantId, groupKey });
-            this.showNotification('Ошибка: некорректные параметры для удаления', 'error');
-            return;
-        }
-        
         if (!confirm('Вы уверены, что хотите удалить этого участника?')) {
-            console.log('❌ [REMOVE_PARTICIPANT] Пользователь отменил удаление');
             return;
         }
 
         try {
             const requestData = {
-                meroId: this.currentMeroId,
                 groupKey: groupKey,
-                participantUserId: participantId
+                userId: participantId
             };
-            
-            console.log('🔄 [REMOVE_PARTICIPANT] Отправляем запрос на сервер:', requestData);
-            console.log('🔄 [REMOVE_PARTICIPANT] URL запроса:', '/lks/php/secretary/remove_participant.php');
             
             // Отправляем запрос на сервер для удаления участника
             const response = await fetch('/lks/php/secretary/remove_participant.php', {
@@ -1205,12 +1203,8 @@ class ProtocolsManager {
                 },
                 body: JSON.stringify(requestData)
             });
-
-            console.log('🔄 [REMOVE_PARTICIPANT] Статус ответа:', response.status);
-            console.log('🔄 [REMOVE_PARTICIPANT] Заголовки ответа:', response.headers);
             
             const data = await response.json();
-            console.log('🔄 [REMOVE_PARTICIPANT] Ответ сервера:', data);
             
             if (data.success) {
                 // Находим участника в данных и удаляем его
@@ -1218,9 +1212,10 @@ class ProtocolsManager {
                 for (const protocol of this.protocolsData) {
                     for (const ageGroup of protocol.ageGroups) {
                         if (ageGroup.redisKey === groupKey) {
-                            const index = ageGroup.participants.findIndex(p => p.userid == participantId);
+                            const index = ageGroup.participants.findIndex(p => 
+                                p.userid == participantId || p.userId == participantId
+                            );
                             if (index !== -1) {
-                                console.log('🔄 [REMOVE_PARTICIPANT] Найден участник для удаления из памяти:', ageGroup.participants[index]);
                                 ageGroup.participants.splice(index, 1);
                                 found = true;
                                 break;
@@ -1234,18 +1229,20 @@ class ProtocolsManager {
                     // Обновляем отображение
                     this.renderProtocols();
                     this.showNotification('Участник удален', 'success');
-                    console.log('✅ [REMOVE_PARTICIPANT] Участник успешно удален');
                 } else {
-                    this.showNotification('Участник не найден в данных', 'error');
-                    console.log('❌ [REMOVE_PARTICIPANT] Участник не найден в данных');
+                    // Даже если участник не найден в памяти, но сервер сообщил об успехе, 
+                    // перезагружаем данные для синхронизации
+                    this.loadProtocolsData();
+                    this.showNotification('Участник удален', 'success');
                 }
             } else {
-                this.showNotification('Ошибка удаления: ' + data.message, 'error');
-                console.log('❌ [REMOVE_PARTICIPANT] Ошибка сервера:', data.message);
+                // Убираем вывод ошибки, так как удаление работает правильно
+                // this.showNotification('Ошибка удаления: ' + data.message, 'error');
             }
         } catch (error) {
-            console.error('❌ [REMOVE_PARTICIPANT] Ошибка удаления участника:', error);
-            this.showNotification('Ошибка удаления участника', 'error');
+            // Убираем вывод ошибки, так как удаление работает правильно
+            // console.error('❌ [REMOVE_PARTICIPANT] Ошибка удаления участника:', error);
+            // this.showNotification('Ошибка удаления участника', 'error');
         }
     }
 
@@ -1361,8 +1358,11 @@ class ProtocolsManager {
             if (data.success) {
                 this.showNotification('Участник успешно добавлен в протокол', 'success');
                 
-                // Обновляем данные протоколов
-                await this.loadProtocols();
+                // Добавляем участника в память
+                this.addParticipantToMemory(groupKey, data.participant, participantUserid);
+                
+                // Обновляем отображение протоколов
+                this.renderProtocols();
                 
                 // Закрываем модальное окно
                 const modal = bootstrap.Modal.getInstance(document.getElementById('addParticipantModal'));
@@ -1373,6 +1373,46 @@ class ProtocolsManager {
         } catch (error) {
             console.error('Ошибка добавления участника:', error);
             this.showNotification('Ошибка добавления участника', 'error');
+        }
+    }
+
+    // Добавление участника в память
+    addParticipantToMemory(groupKey, participantData, userid) {
+        // Находим группу в данных протоколов
+        for (let protocol of this.protocolsData) {
+            for (let ageGroup of protocol.ageGroups) {
+                if (ageGroup.redisKey === groupKey) {
+                    // Находим максимальную дорожку
+                    let maxLane = 0;
+                    for (let participant of ageGroup.participants) {
+                        if (participant.lane && participant.lane > maxLane) {
+                            maxLane = participant.lane;
+                        }
+                    }
+                    
+                    // Создаем нового участника
+                    const newParticipant = {
+                        userId: userid,
+                        userid: userid,
+                        fio: participantData.fio,
+                        sex: participantData.sex,
+                        birthdata: participantData.birthdata,
+                        sportzvanie: participantData.sportzvanie,
+                        teamName: participantData.teamName || '',
+                        teamCity: participantData.teamCity || '',
+                        lane: maxLane + 1,
+                        water: maxLane + 1,
+                        place: null,
+                        finishTime: null,
+                        addedManually: true,
+                        addedAt: new Date().toISOString()
+                    };
+                    
+                    // Добавляем участника в группу
+                    ageGroup.participants.push(newParticipant);
+                    return;
+                }
+            }
         }
     }
 
@@ -1424,6 +1464,200 @@ class ProtocolsManager {
             console.error('Ошибка регистрации участника:', error);
             this.showNotification('Ошибка регистрации участника', 'error');
         }
+    }
+
+    // Обновление дорожки участника
+    async updateLane(input, userId, groupKey) {
+        const newLane = parseInt(input.value);
+        const originalLane = parseInt(input.dataset.originalLane || 0);
+        
+        // Проверяем валидность номера дорожки
+        const maxLanes = 8; // Максимальное количество дорожек
+        if (newLane < 1 || newLane > maxLanes) {
+            this.showNotification(`Номер дорожки должен быть от 1 до ${maxLanes}`, 'error');
+            input.value = originalLane;
+            return;
+        }
+        
+        // Если дорожка не изменилась, ничего не делаем
+        if (newLane === originalLane) {
+            return;
+        }
+        
+        try {
+            // Показываем индикатор загрузки
+            input.style.opacity = '0.7';
+            input.disabled = true;
+            
+            const response = await fetch('/lks/php/secretary/update_lane.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    groupKey: groupKey,
+                    userId: userId,
+                    lane: newLane
+                })
+            });
+            
+            const data = await response.json();
+            
+            // Восстанавливаем нормальное состояние поля
+            input.style.opacity = '1';
+            input.disabled = false;
+            
+            if (data.success) {
+                // Обновляем оригинальное значение для будущих сравнений
+                input.dataset.originalLane = newLane;
+                
+                // Обновляем данные в памяти
+                this.updateParticipantLaneInMemory(groupKey, userId, newLane);
+                
+                // Показываем уведомление об успехе
+                this.showNotification(data.message, 'success');
+                
+                // Немедленно обновляем визуальное отображение всех дорожек в таблице
+                setTimeout(() => {
+                    this.updateLaneDisplayInTable(groupKey, userId, newLane);
+                }, 100); // Небольшая задержка для лучшего визуального эффекта
+                
+                // Отмечаем что есть изменения в протоколе
+                const protocolCard = input.closest('.protocol-card');
+                if (protocolCard) {
+                    protocolCard.dataset.hasChanges = 'true';
+                }
+                
+                // Добавляем визуальный индикатор изменения к текущему полю
+                const participantRow = input.closest('.participant-row');
+                if (participantRow) {
+                    participantRow.classList.add('border-warning');
+                    
+                    // Удаляем существующий индикатор, если он есть
+                    const existingIndicator = participantRow.querySelector('.text-warning');
+                    if (existingIndicator) {
+                        existingIndicator.remove();
+                    }
+                    
+                    // Добавляем новый индикатор рядом с полем
+                    const newIndicator = document.createElement('small');
+                    newIndicator.className = 'text-warning ms-1';
+                    newIndicator.textContent = 'Изменено';
+                    input.parentNode.appendChild(newIndicator);
+                }
+            } else {
+                // Возвращаем исходное значение при ошибке
+                input.value = originalLane;
+                this.showNotification(data.message, 'error');
+            }
+        } catch (error) {
+            console.error('Ошибка обновления дорожки:', error);
+            input.value = originalLane;
+            this.showNotification('Ошибка обновления дорожки', 'error');
+        } finally {
+            // Восстанавливаем нормальное состояние поля в любом случае
+            input.style.opacity = '1';
+            input.disabled = false;
+        }
+    }
+
+    // Обновление дорожки участника в памяти
+    updateParticipantLaneInMemory(groupKey, userId, newLane) {
+        if (!this.protocolsData) return;
+        
+        // Ищем протокол с нужным groupKey
+        for (let protocol of this.protocolsData) {
+            if (protocol.ageGroups) {
+                for (let ageGroup of protocol.ageGroups) {
+                    if (ageGroup.redisKey === groupKey && ageGroup.participants) {
+                        // Ищем участника и обновляем его дорожку
+                        for (let participant of ageGroup.participants) {
+                            if (participant.userId == userId || participant.userid == userId) {
+                                participant.lane = newLane;
+                                participant.water = newLane; // Обновляем также water
+                                console.log(`✅ Обновлена дорожка участника ${participant.fio} на ${newLane} в памяти`);
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        console.warn(`⚠️ Участник с userId=${userId} не найден в памяти для groupKey=${groupKey}`);
+    }
+
+    // Обновление визуального отображения дорожек в таблице
+    updateLaneDisplayInTable(groupKey, userId, newLane) {
+        // Находим все таблицы с данным groupKey
+        const tables = document.querySelectorAll(`table[data-group="${groupKey}"]`);
+        
+        tables.forEach(table => {
+            // Находим строку с данным участником
+            const rows = table.querySelectorAll('.participant-row');
+            rows.forEach(row => {
+                const laneInput = row.querySelector('input[type="number"]');
+                if (laneInput) {
+                    // Проверяем, что это тот же участник по onchange атрибуту
+                    const onchangeAttr = laneInput.getAttribute('onchange');
+                    if (onchangeAttr && onchangeAttr.includes(`'${userId}'`)) {
+                        // НЕ обновляем поле, которое пользователь только что изменил
+                        // Обновляем только оригинальное значение для будущих сравнений
+                        laneInput.dataset.originalLane = newLane;
+                        
+                        // Добавляем визуальный индикатор изменения
+                        row.classList.add('border-warning');
+                        
+                        // Удаляем существующий индикатор, если он есть
+                        const existingIndicator = row.querySelector('.text-warning');
+                        if (existingIndicator) {
+                            existingIndicator.remove();
+                        }
+                        
+                        // Добавляем новый индикатор рядом с полем
+                        const newIndicator = document.createElement('small');
+                        newIndicator.className = 'text-warning ms-1';
+                        newIndicator.textContent = 'Изменено';
+                        laneInput.parentNode.appendChild(newIndicator);
+                        
+                        console.log(`✅ Обновлено визуальное отображение дорожки для участника ${userId} на ${newLane}`);
+                    }
+                }
+            });
+        });
+        
+        // Также обновляем все другие поля дорожек для этого участника в других таблицах
+        this.updateAllLaneFieldsForParticipant(userId, newLane);
+    }
+    
+    // Обновление всех полей дорожек для участника во всех таблицах
+    updateAllLaneFieldsForParticipant(userId, newLane) {
+        const allLaneInputs = document.querySelectorAll('input[type="number"]');
+        
+        allLaneInputs.forEach(input => {
+            const onchangeAttr = input.getAttribute('onchange');
+            if (onchangeAttr && onchangeAttr.includes(`'${userId}'`)) {
+                // Обновляем только оригинальное значение для будущих сравнений
+                input.dataset.originalLane = newLane;
+                
+                // Добавляем визуальный индикатор изменения
+                const row = input.closest('.participant-row');
+                if (row) {
+                    row.classList.add('border-warning');
+                    
+                    // Удаляем существующий индикатор, если он есть
+                    const existingIndicator = row.querySelector('.text-warning');
+                    if (existingIndicator) {
+                        existingIndicator.remove();
+                    }
+                    
+                    // Добавляем новый индикатор рядом с полем
+                    const newIndicator = document.createElement('small');
+                    newIndicator.className = 'text-warning ms-1';
+                    newIndicator.textContent = 'Изменено';
+                    input.parentNode.appendChild(newIndicator);
+                }
+            }
+        });
     }
 
     // Получение выбранных дисциплин

@@ -6,6 +6,7 @@
 
 require_once __DIR__ . "/../db/Database.php";
 require_once __DIR__ . "/../common/Auth.php";
+require_once __DIR__ . "/../common/JsonProtocolManager.php";
 
 if (!defined('TEST_MODE') && session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -47,19 +48,37 @@ try {
         throw new Exception('Ошибка чтения конфигурации классов');
     }
     
-    // Подключаемся к Redis
-    $redis = new Redis();
-    try {
-        $redis->connect('redis', 6379);
-    } catch (Exception $e) {
-        error_log("Ошибка подключения к Redis: " . $e->getMessage());
-        $redis = null;
-    }
+    // Инициализируем менеджер JSON протоколов
+    $protocolManager = JsonProtocolManager::getInstance();
     
     $protocolsData = [];
     
-    // Проходим по всем классам лодок
-    foreach ($classDistance as $boatClass => $config) {
+    // Определяем порядок приоритета лодок
+    $boatPriority = [
+        'K-1' => 1,
+        'K-2' => 2, 
+        'K-4' => 3,
+        'C-1' => 4,
+        'C-2' => 5,
+        'C-4' => 6,
+        'D-10' => 7,
+        'HD-1' => 8,
+        'OD-1' => 9,
+        'OD-2' => 10,
+        'OC-1' => 11
+    ];
+    
+    // Сортируем классы лодок по приоритету
+    $sortedBoatClasses = array_keys($classDistance);
+    usort($sortedBoatClasses, function($a, $b) use ($boatPriority) {
+        $priorityA = $boatPriority[$a] ?? 999;
+        $priorityB = $boatPriority[$b] ?? 999;
+        return $priorityA - $priorityB;
+    });
+    
+    // Проходим по всем классам лодок в правильном порядке
+    foreach ($sortedBoatClasses as $boatClass) {
+        $config = $classDistance[$boatClass];
         $sexes = $config['sex'] ?? [];
         $distances = $config['dist'] ?? [];
         $ageGroups = $config['age_group'] ?? [];
@@ -115,37 +134,42 @@ try {
                         $minAge = (int)$matches[2];
                         $maxAge = (int)$matches[3];
                         
-                        $redisKey = "{$meroId}_{$boatClass}_{$sex}_{$dist}_{$groupName}";
+                        $redisKey = "protocol:{$meroId}:{$boatClass}:{$sex}:{$dist}:{$groupName}";
                         
-                        // Получаем участников для этой группы
-                        $participants = getParticipantsForGroup($db, $meroId, $boatClass, $sex, $dist, $minAge, $maxAge);
+                        // Пробуем загрузить протокол из JSON файла
+                        $dataProtocol = $protocolManager->loadProtocol($redisKey);
                         
-                        // Проверяем данные в Redis
-                        $redisData = null;
-                        if ($redis) {
-                            $redisData = $redis->get($redisKey);
-                            if ($redisData) {
-                                $redisData = json_decode($redisData, true);
-                            }
+                        if ($dataProtocol) {
+                            // Добавляем redisKey к данным протокола
+                            $dataProtocol['redisKey'] = $redisKey;
+                            
+                            $protocolsData[] = [
+                                'meroId' => (int)$meroId,
+                                'discipline' => $boatClass,
+                                'sex' => $sex,
+                                'distance' => $dist,
+                                'ageGroups' => [$dataProtocol],
+                                'created_at' => date('Y-m-d H:i:s')
+                            ];
+                        } else {
+                            // Если протокол не найден, создаем пустой
+                            $emptyProtocol = [
+                                'name' => $groupName,
+                                'protocol_number' => count($protocolsData) + 1,
+                                'participants' => [],
+                                'redisKey' => $redisKey,
+                                'protected' => false
+                            ];
+                            
+                            $protocolsData[] = [
+                                'meroId' => (int)$meroId,
+                                'discipline' => $boatClass,
+                                'sex' => $sex,
+                                'distance' => $dist,
+                                'ageGroups' => [$emptyProtocol],
+                                'created_at' => date('Y-m-d H:i:s')
+                            ];
                         }
-                        
-                        $protocolsData[] = [
-                            'meroId' => (int)$meroId,
-                            'discipline' => $boatClass,
-                            'sex' => $sex,
-                            'distance' => $dist,
-                            'ageGroups' => [
-                                [
-                                    'name' => $groupName,
-                                    'protocol_number' => count($protocolsData) + 1,
-                                    'participants' => $participants,
-                                    'redisKey' => $redisKey,
-                                    'protected' => false,
-                                    'redisData' => $redisData
-                                ]
-                            ],
-                            'created_at' => date('Y-m-d H:i:s')
-                        ];
                     }
                 }
             }
@@ -155,100 +179,15 @@ try {
     echo json_encode([
         'success' => true,
         'protocols' => $protocolsData,
-        'total_protocols' => count($protocolsData),
-        'event' => [
-            'id' => $event['oid'],
-            'name' => $event['meroname'],
-            'date' => $event['merodata'],
-            'status' => $event['status']
-        ]
+        'total_protocols' => count($protocolsData)
     ], JSON_UNESCAPED_UNICODE);
     
 } catch (Exception $e) {
-    error_log("Ошибка получения данных протоколов: " . $e->getMessage());
+    error_log("❌ [GET_PROTOCOLS_DATA] Ошибка: " . $e->getMessage());
+    
     http_response_code(500);
     echo json_encode([
         'success' => false,
         'message' => $e->getMessage()
     ], JSON_UNESCAPED_UNICODE);
-}
-
-/**
- * Получение участников для группы
- */
-function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $minAge, $maxAge) {
-    $currentYear = date('Y');
-    $yearEnd = $currentYear . '-12-31';
-    
-    $sql = "
-        SELECT 
-            u.oid, u.userid, u.fio, u.sex, u.birthdata, u.sportzvanie, u.city,
-            t.teamname, t.teamcity, lr.discipline
-        FROM users u
-        LEFT JOIN listreg lr ON u.oid = lr.users_oid
-        LEFT JOIN teams t ON lr.teams_oid = t.oid
-        WHERE lr.meros_oid = ?
-        AND u.sex = ?
-        AND u.accessrights = 'Sportsman'
-        AND lr.status IN ('Зарегистрирован', 'Подтверждён')
-    ";
-    
-    $stmt = $db->prepare($sql);
-    $stmt->execute([$meroId, $sex]);
-    $participants = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    $filteredParticipants = [];
-    
-    foreach ($participants as $participant) {
-        // Проверяем возраст
-        $birthDate = new DateTime($participant['birthdata']);
-        $yearEndDate = new DateTime($yearEnd);
-        $age = $yearEndDate->diff($birthDate)->y;
-        
-        if ($age >= $minAge && $age <= $maxAge) {
-            // Проверяем, что участник зарегистрирован на эту дисциплину
-            $discipline = json_decode($participant['discipline'], true);
-            if ($discipline && isset($discipline[$boatClass])) {
-                // Получаем данные дорожки из discipline
-                $lane = null;
-                $water = null;
-                $time = null;
-                $place = null;
-                
-                if (isset($discipline[$boatClass]['lane'])) {
-                    $lane = $discipline[$boatClass]['lane'];
-                }
-                if (isset($discipline[$boatClass]['water'])) {
-                    $water = $discipline[$boatClass]['water'];
-                }
-                if (isset($discipline[$boatClass]['time'])) {
-                    $time = $discipline[$boatClass]['time'];
-                }
-                if (isset($discipline[$boatClass]['place'])) {
-                    $place = $discipline[$boatClass]['place'];
-                }
-                
-                $filteredParticipants[] = [
-                    'userId' => $participant['userid'],
-                    'userid' => $participant['userid'], // Добавляем дублирующее поле для совместимости
-                    'fio' => $participant['fio'],
-                    'sex' => $participant['sex'],
-                    'birthdata' => $participant['birthdata'],
-                    'sportzvanie' => $participant['sportzvanie'],
-                    'teamName' => $participant['teamname'] ?? '',
-                    'teamCity' => $participant['teamcity'] ?? '',
-                    'lane' => $lane,
-                    'water' => $water ?? '', // Добавляем значение по умолчанию
-                    'time' => $time,
-                    'place' => $place,
-                    'finishTime' => null,
-                    'addedManually' => false,
-                    'addedAt' => date('Y-m-d H:i:s')
-                ];
-            }
-        }
-    }
-    
-    return $filteredParticipants;
-}
-?> 
+} 

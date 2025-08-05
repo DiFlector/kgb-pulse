@@ -1,155 +1,132 @@
 <?php
-// Отключаем вывод ошибок в браузер
-error_reporting(E_ALL);
-ini_set('display_errors', 0);
-ini_set('log_errors', 1);
-ini_set('error_log', __DIR__ . '/../../../logs/php_errors.log');
+/**
+ * Обновление номера дорожки участника
+ * Файл: www/lks/php/secretary/update_lane.php
+ */
 
-// Начинаем буферизацию вывода
-ob_start();
+require_once __DIR__ . "/../db/Database.php";
+require_once __DIR__ . "/../common/JsonProtocolManager.php";
 
-session_start();
-require_once __DIR__ . '/../common/Auth.php';
-require_once __DIR__ . '/../db/Database.php';
-
-// Проверка авторизации и прав доступа
-$auth = new Auth();
-
-if (!$auth->isAuthenticated()) {
-    // Очищаем буфер и отправляем JSON
-    ob_end_clean();
-    http_response_code(401);
-    header('Content-Type: application/json');
-    echo json_encode(['success' => false, 'message' => 'Не авторизован']);
-    exit;
+if (!defined('TEST_MODE') && session_status() === PHP_SESSION_NONE) {
+    session_start();
 }
 
-if (!$auth->hasAnyRole(['Secretary', 'SuperUser', 'Admin'])) {
-    // Очищаем буфер и отправляем JSON
-    ob_end_clean();
-    http_response_code(403);
-    header('Content-Type: application/json');
-    echo json_encode(['success' => false, 'message' => 'Нет прав доступа']);
-    exit;
+// В режиме тестирования пропускаем проверку аутентификации
+if (!defined('TEST_MODE')) {
+    // Проверка прав доступа
+    if (!isset($_SESSION['user_role']) || !in_array($_SESSION['user_role'], ['Secretary', 'SuperUser', 'Admin'])) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Доступ запрещен']);
+        exit();
+    }
 }
 
-// Получение данных из запроса
-$input = json_decode(file_get_contents('php://input'), true);
-$meroId = $input['meroId'] ?? null;
-$groupKey = $input['groupKey'] ?? null;
-$userId = $input['userId'] ?? null;
-$newLane = $input['newLane'] ?? null;
-
-if (!$meroId || !$groupKey || !$userId || !$newLane) {
-    // Очищаем буфер и отправляем JSON
-    ob_end_clean();
-    header('Content-Type: application/json');
-    echo json_encode(['success' => false, 'message' => 'Не все параметры указаны']);
-    exit;
-}
+if (!defined('TEST_MODE')) header('Content-Type: application/json; charset=utf-8');
 
 try {
-    // Загружаем данные протоколов
-    $protocolsDir = __DIR__ . '/../../../files/json/protocols/';
-    $filename = $protocolsDir . "protocols_{$meroId}.json";
-    
-    if (!file_exists($filename)) {
-        // Очищаем буфер и отправляем JSON
-        ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'message' => 'Файл протоколов не найден']);
-        exit;
+    // Получаем данные из POST запроса
+    if (defined('TEST_MODE')) {
+        $data = $_POST;
+    } else {
+        $rawInput = file_get_contents('php://input');
+        $data = json_decode($rawInput, true);
     }
     
-    $jsonData = file_get_contents($filename);
-    $protocolsData = json_decode($jsonData, true);
-    
-    if (!$protocolsData) {
-        // Очищаем буфер и отправляем JSON
-        ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'message' => 'Ошибка чтения файла протоколов']);
-        exit;
+    if (!$data) {
+        throw new Exception('Неверные данные запроса');
     }
     
-    // Подключаемся к Redis
-    $redis = new Redis();
-    $redis->connect('redis', 6379);
+    // Проверяем обязательные поля
+    if (!isset($data['groupKey'])) {
+        throw new Exception('Отсутствует обязательное поле: groupKey');
+    }
     
-    $laneUpdated = false;
-    $maxLanes = 9; // По умолчанию
+    if (!isset($data['userId'])) {
+        throw new Exception('Отсутствует обязательное поле: userId');
+    }
     
-    // Находим нужную группу и обновляем дорожку
-    foreach ($protocolsData as &$protocol) {
-        foreach ($protocol['ageGroups'] as &$ageGroup) {
-            if ($ageGroup['redisKey'] === $groupKey) {
-                // Получаем максимальное количество дорожек для этой дисциплины
-                $maxLanes = ($protocol['discipline'] === 'D-10') ? 6 : 9;
-                
-                // Проверяем, что новая дорожка в допустимых пределах
-                if ($newLane < 1 || $newLane > $maxLanes) {
-                    // Очищаем буфер и отправляем JSON
-                    ob_end_clean();
-                    header('Content-Type: application/json');
-                    echo json_encode(['success' => false, 'message' => "Номер дорожки должен быть от 1 до {$maxLanes}"]);
-                    exit;
-                }
-                
-                // Проверяем, не занята ли уже эта дорожка другим участником
-                foreach ($ageGroup['participants'] as $participant) {
-                    if ($participant['userId'] != $userId && $participant['lane'] == $newLane) {
-                        // Очищаем буфер и отправляем JSON
-                        ob_end_clean();
-                        header('Content-Type: application/json');
-                        echo json_encode(['success' => false, 'message' => "Дорожка {$newLane} уже занята другим участником"]);
-                        exit;
-                    }
-                }
-                
-                // Обновляем дорожку участника
-                foreach ($ageGroup['participants'] as &$participant) {
-                    if ($participant['userId'] == $userId) {
-                        $participant['lane'] = (int)$newLane;
-                        $participant['water'] = (int)$newLane; // Добавляем обновление поля "вода"
-                        $participant['laneModified'] = true;
-                        $participant['laneModifiedAt'] = date('Y-m-d H:i:s');
-                        $laneUpdated = true;
-                        break;
-                    }
-                }
-                
-                // Сохраняем в Redis
-                $redis->setex($ageGroup['redisKey'], 86400, json_encode($ageGroup));
-                break 2;
-            }
+    if (!isset($data['lane'])) {
+        throw new Exception('Отсутствует обязательное поле: lane');
+    }
+    
+    $groupKey = $data['groupKey'];
+    $userId = (int)$data['userId'];
+    $lane = (int)$data['lane'];
+    
+    if (empty($groupKey) || $userId <= 0 || $lane <= 0) {
+        throw new Exception('Неверные параметры запроса');
+    }
+    
+    error_log("🔄 [UPDATE_LANE] Обновление дорожки участника $userId на дорожку $lane в группе $groupKey");
+    
+    // Инициализируем менеджер JSON протоколов
+    $protocolManager = JsonProtocolManager::getInstance();
+    
+    // Получаем данные протокола из JSON файла
+    $protocolData = $protocolManager->loadProtocol($groupKey);
+    
+    if (!$protocolData) {
+        error_log("❌ [UPDATE_LANE] Протокол не найден: groupKey=$groupKey");
+        echo json_encode(['success' => false, 'message' => 'Протокол не найден']);
+        exit();
+    }
+    
+    if (!isset($protocolData['participants']) || !is_array($protocolData['participants'])) {
+        error_log("❌ [UPDATE_LANE] Неверная структура протокола: groupKey=$groupKey");
+        echo json_encode(['success' => false, 'message' => 'Неверная структура протокола']);
+        exit();
+    }
+    
+    // Ищем участника для обновления
+    $participantIndex = -1;
+    $participantName = '';
+    
+    foreach ($protocolData['participants'] as $index => $participant) {
+        if (isset($participant['userId']) && $participant['userId'] == $userId) {
+            $participantIndex = $index;
+            $participantName = $participant['fio'] ?? 'Неизвестный участник';
+            break;
         }
     }
     
-    if (!$laneUpdated) {
-        // Очищаем буфер и отправляем JSON
-        ob_end_clean();
-        header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'message' => 'Участник не найден в указанной группе']);
-        exit;
+    if ($participantIndex === -1) {
+        error_log("❌ [UPDATE_LANE] Участник не найден в протоколе: userId=$userId, groupKey=$groupKey");
+        echo json_encode(['success' => false, 'message' => 'Участник не найден в протоколе']);
+        exit();
     }
     
-    // Сохраняем обновленные данные в JSON файл
-    file_put_contents($filename, json_encode($protocolsData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+    // Проверяем, не занята ли дорожка другим участником
+    foreach ($protocolData['participants'] as $index => $participant) {
+        if ($index !== $participantIndex && isset($participant['lane']) && $participant['lane'] == $lane) {
+            error_log("❌ [UPDATE_LANE] Дорожка $lane уже занята участником: {$participant['fio']}");
+            echo json_encode(['success' => false, 'message' => "Дорожка $lane уже занята участником {$participant['fio']}"]);
+            exit();
+        }
+    }
     
-    // Очищаем буфер и отправляем JSON
-    ob_end_clean();
-    header('Content-Type: application/json');
+    // Обновляем номер дорожки
+    $oldLane = $protocolData['participants'][$participantIndex]['lane'] ?? null;
+    $protocolData['participants'][$participantIndex]['lane'] = $lane;
+    $protocolData['participants'][$participantIndex]['water'] = $lane; // Обновляем также поле water
+    
+    error_log("✅ [UPDATE_LANE] Дорожка обновлена: $participantName (userId=$userId) с дорожки $oldLane на дорожку $lane");
+    
+    // Сохраняем обновленный протокол в JSON файл
+    $protocolManager->updateProtocol($groupKey, $protocolData);
+    
     echo json_encode([
         'success' => true,
-        'message' => "Дорожка успешно изменена на {$newLane}",
-        'newLane' => $newLane,
-        'maxLanes' => $maxLanes
-    ]);
+        'message' => "Дорожка участника $participantName обновлена на $lane",
+        'userId' => $userId,
+        'lane' => $lane
+    ], JSON_UNESCAPED_UNICODE);
     
 } catch (Exception $e) {
-    // Очищаем буфер и отправляем JSON
-    ob_end_clean();
-    header('Content-Type: application/json');
-    echo json_encode(['success' => false, 'message' => 'Ошибка обновления дорожки: ' . $e->getMessage()]);
-}
-?> 
+    error_log("❌ [UPDATE_LANE] Ошибка: " . $e->getMessage());
+    
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'message' => $e->getMessage()
+    ], JSON_UNESCAPED_UNICODE);
+} 

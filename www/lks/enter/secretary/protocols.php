@@ -840,7 +840,8 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
             console.log('Bootstrap загружен успешно');
         }
     </script>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="/lks/js/secretary/protocols_new.js?v=<?php echo time(); ?>&nocache=1&fix=1"></script>
+    <!-- JavaScript -->
+    <script src="/lks/js/libs/jquery/jquery-3.7.1.min.js"></script>
+    <script src="/lks/js/secretary/protocols_new.js?v=<?php echo time(); ?>"></script>
 </body>
 </html> 

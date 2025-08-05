@@ -57,10 +57,10 @@ if (!$groupKey || !$meroId) {
 
 try {
     require_once '../db/Database.php';
-    require_once '../common/RedisManager.php';
+    require_once '../common/JsonProtocolManager.php';
 
     $db = Database::getInstance();
-    $redis = RedisManager::getInstance();
+    $protocolManager = JsonProtocolManager::getInstance();
 
     // Получение информации о мероприятии
     $stmt = $db->prepare("SELECT meroname, merodata FROM meros WHERE champn = ?");
@@ -73,62 +73,19 @@ try {
         exit();
     }
 
-    // Загружаем данные протоколов из JSON файла
-    $protocolsFile = __DIR__ . "/../../files/json/protocols/protocols_{$meroId}.json";
-    if (!file_exists($protocolsFile)) {
+    // Загружаем данные протокола из JSON файла
+    $protocolData = $protocolManager->loadProtocol($groupKey);
+    
+    if (!$protocolData) {
         http_response_code(404);
-        echo 'Файл протоколов не найден';
+        echo 'Протокол не найден';
         exit();
     }
 
-    $jsonData = file_get_contents($protocolsFile);
-    $protocolsData = json_decode($jsonData, true);
-
-    // Находим нужную группу
-    $targetAgeGroup = null;
-    $targetProtocol = null;
-    $parts = explode('_', $groupKey);
-    if (count($parts) >= 5) {
-        $meroId = $parts[0];
-        $discipline = $parts[1];
-        $sex = $parts[2];
-        $distance = $parts[3];
-        $ageGroupName = implode('_', array_slice($parts, 4));
-        $cyrillicSex = $sex === 'M' ? 'М' : ($sex === 'W' ? 'Ж' : $sex);
-        foreach ($protocolsData as $protocol) {
-            if ($protocol['meroId'] == $meroId && 
-                $protocol['discipline'] === $discipline && 
-                $protocol['sex'] === $cyrillicSex && 
-                $protocol['distance'] === $distance) {
-                foreach ($protocol['ageGroups'] as $ageGroup) {
-                    if (strpos($ageGroup['name'], $ageGroupName) !== false) {
-                        $targetAgeGroup = $ageGroup;
-                        $targetProtocol = $protocol;
-                        break 2;
-                    }
-                }
-            }
-        }
-    }
-    if (!$targetAgeGroup) {
-        foreach ($protocolsData as $protocol) {
-            foreach ($protocol['ageGroups'] as $ageGroup) {
-                if ($ageGroup['redisKey'] === $groupKey) {
-                    $targetAgeGroup = $ageGroup;
-                    $targetProtocol = $protocol;
-                    break 2;
-                }
-            }
-        }
-    }
-    if (!$targetAgeGroup) {
-        http_response_code(404);
-        echo 'Группа протокола не найдена';
-        exit();
-    }
+    // Проверяем полноту финишного протокола
     if ($protocolType === 'finish') {
         $isComplete = true;
-        foreach ($targetAgeGroup['participants'] as $participant) {
+        foreach ($protocolData['participants'] as $participant) {
             if (empty($participant['place']) || empty($participant['finishTime'])) {
                 $isComplete = false;
                 break;
@@ -144,8 +101,8 @@ try {
     // Формируем CSV данные
     $csvData = [];
     $raceNumber = 1;
-    $discipline = $targetProtocol['discipline'] . ' ' . $targetProtocol['distance'] . 'м ' . $targetProtocol['sex'];
-    $ageGroup = $targetAgeGroup['name'];
+    $discipline = $protocolData['discipline'] . ' ' . $protocolData['distance'] . 'м ' . $protocolData['sex'];
+    $ageGroup = $protocolData['ageGroup'];
     $csvData[] = [$raceNumber . ';;' . $discipline . ';;;' . $ageGroup . ';;;;'];
     if ($protocolType === 'start') {
         $csvData[] = ['СТАРТ;Время заезда;Вода;-;Номер;ФИО;Год рождения;Группа;Спортивный разряд;Спорт.организация'];
@@ -153,9 +110,9 @@ try {
         $csvData[] = ['ФИНИШ;Место в заезде;Вода;-;Время прохождения;Минуты;Секунды;Номер;ФИО;Год рождения;Группа;Спортивный разряд;Спорт.организация'];
     }
     $maxLanes = 10;
-    for ($lane = 0; $lane < $maxLanes; $lane++) {
+    for ($lane = 1; $lane <= $maxLanes; $lane++) {
         $participant = null;
-        foreach ($targetAgeGroup['participants'] as $p) {
+        foreach ($protocolData['participants'] as $p) {
             if (($p['lane'] ?? 0) == $lane) {
                 $participant = $p;
                 break;

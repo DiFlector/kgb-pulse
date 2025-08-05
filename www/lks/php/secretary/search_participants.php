@@ -1,7 +1,7 @@
 <?php
 session_start();
-require_once __DIR__ . '/../../common/Auth.php';
-require_once __DIR__ . '/../../db/Database.php';
+require_once __DIR__ . '/../common/Auth.php';
+require_once __DIR__ . '/../db/Database.php';
 
 // Проверка авторизации и прав доступа
 $auth = new Auth();

@@ -49,10 +49,10 @@ if (!$meroId) {
 
 try {
     require_once '../db/Database.php';
-    require_once '../common/RedisManager.php';
+    require_once '../common/JsonProtocolManager.php';
     
     $db = Database::getInstance();
-    $redis = RedisManager::getInstance();
+    $protocolManager = JsonProtocolManager::getInstance();
     
     // Получение информации о мероприятии
     $stmt = $db->prepare("SELECT meroname, merodata FROM meros WHERE champn = ?");
@@ -66,47 +66,36 @@ try {
         exit();
     }
     
-    // Загружаем данные протоколов из JSON файла
-    $protocolsFile = __DIR__ . "/../../files/json/protocols/protocols_{$meroId}.json";
+    // Получаем все протоколы для мероприятия
+    $allProtocols = $protocolManager->getEventProtocols($meroId);
     
-    if (!file_exists($protocolsFile)) {
-        error_log("ОШИБКА: Файл протоколов не найден. Путь: $protocolsFile");
+    if (empty($allProtocols)) {
+        error_log("ОШИБКА: Нет протоколов для скачивания. Тип: $protocolType");
         http_response_code(404);
-        echo 'Файл протоколов не найден';
+        echo 'Нет протоколов для скачивания';
         exit();
     }
     
-    $jsonData = file_get_contents($protocolsFile);
-    $protocolsData = json_decode($jsonData, true);
-    
     // Фильтруем протоколы по типу
     $filteredProtocols = [];
-    foreach ($protocolsData as $protocol) {
-        foreach ($protocol['ageGroups'] as $ageGroup) {
-            if ($protocolType === 'start') {
-                // Для стартовых протоколов - все непустые
-                if ($ageGroup['participants'] && count($ageGroup['participants']) > 0) {
-                    $filteredProtocols[] = [
-                        'protocol' => $protocol,
-                        'ageGroup' => $ageGroup
-                    ];
+    foreach ($allProtocols as $protocolData) {
+        if ($protocolType === 'start') {
+            // Для стартовых протоколов - все непустые
+            if ($protocolData['participants'] && count($protocolData['participants']) > 0) {
+                $filteredProtocols[] = $protocolData;
+            }
+        } else {
+            // Для финишных протоколов - только заполненные
+            if ($protocolData['participants'] && count($protocolData['participants']) > 0) {
+                $isComplete = true;
+                foreach ($protocolData['participants'] as $participant) {
+                    if (empty($participant['place']) || empty($participant['finishTime'])) {
+                        $isComplete = false;
+                        break;
+                    }
                 }
-            } else {
-                // Для финишных протоколов - только заполненные
-                if ($ageGroup['participants'] && count($ageGroup['participants']) > 0) {
-                    $isComplete = true;
-                    foreach ($ageGroup['participants'] as $participant) {
-                        if (empty($participant['place']) || empty($participant['finishTime'])) {
-                            $isComplete = false;
-                            break;
-                        }
-                    }
-                    if ($isComplete) {
-                        $filteredProtocols[] = [
-                            'protocol' => $protocol,
-                            'ageGroup' => $ageGroup
-                        ];
-                    }
+                if ($isComplete) {
+                    $filteredProtocols[] = $protocolData;
                 }
             }
         }
@@ -123,21 +112,15 @@ try {
     $spreadsheet = new Spreadsheet();
     $sheet = $spreadsheet->getActiveSheet();
     
-    // Устанавливаем кодировку для корректного отображения кириллицы
-    $spreadsheet->getProperties()->setCodepage(65001); // UTF-8
-    
     $currentRow = 1;
     
     foreach ($filteredProtocols as $index => $protocolData) {
-        $protocol = $protocolData['protocol'];
-        $ageGroup = $protocolData['ageGroup'];
-        
         // Заголовок протокола
         $sheet->setCellValue('A' . $currentRow, $mero['meroname']);
         $sheet->setCellValue('A' . ($currentRow + 1), 'Дата: ' . $mero['merodata']);
         $sheet->setCellValue('A' . ($currentRow + 2), 'Тип протокола: ' . ($protocolType === 'start' ? 'Стартовый' : 'Финишный'));
-        $sheet->setCellValue('A' . ($currentRow + 3), 'Дисциплина: ' . $protocol['discipline'] . ' - ' . $protocol['distance'] . 'м - ' . $protocol['sex']);
-        $sheet->setCellValue('A' . ($currentRow + 4), 'Возрастная группа: ' . $ageGroup['name']);
+        $sheet->setCellValue('A' . ($currentRow + 3), 'Дисциплина: ' . $protocolData['discipline'] . ' - ' . $protocolData['distance'] . 'м - ' . $protocolData['sex']);
+        $sheet->setCellValue('A' . ($currentRow + 4), 'Возрастная группа: ' . $protocolData['ageGroup']);
         
         // Стили для заголовка
         $sheet->getStyle('A' . $currentRow . ':A' . ($currentRow + 4))->getFont()->setBold(true);
@@ -151,7 +134,7 @@ try {
             $sheet->setCellValue('C' . $headerRow, 'ФИО');
             $sheet->setCellValue('D' . $headerRow, 'Дата рождения');
             $sheet->setCellValue('E' . $headerRow, 'Спортивный разряд');
-            if ($protocol['discipline'] === 'D-10') {
+            if ($protocolData['discipline'] === 'D-10') {
                 $sheet->setCellValue('F' . $headerRow, 'Город команды');
                 $sheet->setCellValue('G' . $headerRow, 'Название команды');
             }
@@ -163,7 +146,7 @@ try {
             $sheet->setCellValue('E' . $headerRow, 'ФИО');
             $sheet->setCellValue('F' . $headerRow, 'Дата рождения');
             $sheet->setCellValue('G' . $headerRow, 'Спортивный разряд');
-            if ($protocol['discipline'] === 'D-10') {
+            if ($protocolData['discipline'] === 'D-10') {
                 $sheet->setCellValue('H' . $headerRow, 'Город команды');
                 $sheet->setCellValue('I' . $headerRow, 'Название команды');
             }
@@ -171,22 +154,22 @@ try {
         
         // Стили для заголовков таблицы
         $headerRange = $protocolType === 'start' ? 
-            ($protocol['discipline'] === 'D-10' ? 'A' . $headerRow . ':G' . $headerRow : 'A' . $headerRow . ':E' . $headerRow) :
-            ($protocol['discipline'] === 'D-10' ? 'A' . $headerRow . ':I' . $headerRow : 'A' . $headerRow . ':G' . $headerRow);
+            ($protocolData['discipline'] === 'D-10' ? 'A' . $headerRow . ':G' . $headerRow : 'A' . $headerRow . ':E' . $headerRow) :
+            ($protocolData['discipline'] === 'D-10' ? 'A' . $headerRow . ':I' . $headerRow : 'A' . $headerRow . ':G' . $headerRow);
         
         $sheet->getStyle($headerRange)->getFont()->setBold(true);
         $sheet->getStyle($headerRange)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('E3F2FD');
         
         // Данные участников
         $dataRow = $headerRow + 1;
-        foreach ($ageGroup['participants'] as $participant) {
+        foreach ($protocolData['participants'] as $participant) {
             if ($protocolType === 'start') {
                 $sheet->setCellValue('A' . $dataRow, $participant['lane'] ?? '');
                 $sheet->setCellValue('B' . $dataRow, $participant['userId'] ?? '');
                 $sheet->setCellValue('C' . $dataRow, $participant['fio'] ?? '');
                 $sheet->setCellValue('D' . $dataRow, $participant['birthdata'] ?? '');
                 $sheet->setCellValue('E' . $dataRow, $participant['sportzvanie'] ?? '');
-                if ($protocol['discipline'] === 'D-10') {
+                if ($protocolData['discipline'] === 'D-10') {
                     $sheet->setCellValue('F' . $dataRow, $participant['teamCity'] ?? '');
                     $sheet->setCellValue('G' . $dataRow, $participant['teamName'] ?? '');
                 }
@@ -198,7 +181,7 @@ try {
                 $sheet->setCellValue('E' . $dataRow, $participant['fio'] ?? '');
                 $sheet->setCellValue('F' . $dataRow, $participant['birthdata'] ?? '');
                 $sheet->setCellValue('G' . $dataRow, $participant['sportzvanie'] ?? '');
-                if ($protocol['discipline'] === 'D-10') {
+                if ($protocolData['discipline'] === 'D-10') {
                     $sheet->setCellValue('H' . $dataRow, $participant['teamCity'] ?? '');
                     $sheet->setCellValue('I' . $dataRow, $participant['teamName'] ?? '');
                 }
@@ -208,8 +191,8 @@ try {
         
         // Границы для таблицы
         $dataRange = $protocolType === 'start' ? 
-            ($protocol['discipline'] === 'D-10' ? 'A' . $headerRow . ':G' . ($dataRow - 1) : 'A' . $headerRow . ':E' . ($dataRow - 1)) :
-            ($protocol['discipline'] === 'D-10' ? 'A' . $headerRow . ':I' . ($dataRow - 1) : 'A' . $headerRow . ':G' . ($dataRow - 1));
+            ($protocolData['discipline'] === 'D-10' ? 'A' . $headerRow . ':G' . ($dataRow - 1) : 'A' . $headerRow . ':E' . ($dataRow - 1)) :
+            ($protocolData['discipline'] === 'D-10' ? 'A' . $headerRow . ':I' . ($dataRow - 1) : 'A' . $headerRow . ':G' . ($dataRow - 1));
         
         $sheet->getStyle($dataRange)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
         
@@ -230,9 +213,9 @@ try {
         $extension = 'csv';
         $mimeType = 'text/csv; charset=UTF-8';
     } elseif ($format === 'pdf') {
-        // Временно используем Excel формат для PDF
-        $extension = 'xlsx';
-        $mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        // Для PDF создаем HTML и отправляем как HTML файл
+        $extension = 'html';
+        $mimeType = 'text/html; charset=UTF-8';
     } else {
         // Неизвестный формат - используем Excel
         $extension = 'xlsx';
@@ -241,9 +224,6 @@ try {
     
     header('Content-Type: ' . $mimeType);
     $filename = "protocols_{$protocolType}_{$meroId}.{$extension}";
-    if ($format === 'pdf') {
-        $filename = "protocols_{$protocolType}_{$meroId}_as_excel.xlsx";
-    }
     header('Content-Disposition: attachment; filename="' . $filename . '"');
     header('Cache-Control: max-age=0');
     
@@ -252,6 +232,7 @@ try {
         $writer = new Xlsx($spreadsheet);
         // Устанавливаем правильную кодировку для Excel
         $writer->setPreCalculateFormulas(false);
+        $writer->save('php://output');
     } elseif ($format === 'csv') {
         $writer = new Csv($spreadsheet);
         $writer->setDelimiter(';');
@@ -259,18 +240,80 @@ try {
         $writer->setLineEnding("\r\n");
         // Добавляем BOM для корректного отображения кириллицы в Excel
         echo "\xEF\xBB\xBF";
+        $writer->save('php://output');
     } elseif ($format === 'pdf') {
-        // Для PDF используем Excel writer и конвертируем в PDF
-        // Временно используем Excel формат для PDF
-        $writer = new Xlsx($spreadsheet);
-        $writer->setPreCalculateFormulas(false);
+        // Создаем HTML-таблицу для PDF (отправляем как HTML файл)
+        $html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>';
+        $html .= 'body { font-family: Arial, sans-serif; margin: 20px; }';
+        $html .= 'table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }';
+        $html .= 'th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }';
+        $html .= 'th { background-color: #f2f2f2; font-weight: bold; }';
+        $html .= 'h1, h2 { color: #333; }';
+        $html .= '@media print { body { margin: 0; } table { page-break-inside: avoid; } }';
+        $html .= '</style></head><body>';
+        
+        foreach ($filteredProtocols as $index => $protocolData) {
+            $html .= '<h1>' . htmlspecialchars($mero['meroname']) . '</h1>';
+            $html .= '<h2>Дата: ' . htmlspecialchars($mero['merodata']) . '</h2>';
+            $html .= '<h2>Тип протокола: ' . ($protocolType === 'start' ? 'Стартовый' : 'Финишный') . '</h2>';
+            $html .= '<h2>Дисциплина: ' . htmlspecialchars($protocolData['discipline']) . ' - ' . htmlspecialchars($protocolData['distance']) . 'м - ' . htmlspecialchars($protocolData['sex']) . '</h2>';
+            $html .= '<h2>Возрастная группа: ' . htmlspecialchars($protocolData['ageGroup']) . '</h2>';
+            
+            $html .= '<table>';
+            if ($protocolType === 'start') {
+                $html .= '<tr><th>Дорожка</th><th>Номер спортсмена</th><th>ФИО</th><th>Дата рождения</th><th>Спортивный разряд</th>';
+                if ($protocolData['discipline'] === 'D-10') {
+                    $html .= '<th>Город команды</th><th>Название команды</th>';
+                }
+                $html .= '</tr>';
+            } else {
+                $html .= '<tr><th>Место</th><th>Время финиша</th><th>Дорожка</th><th>Номер спортсмена</th><th>ФИО</th><th>Дата рождения</th><th>Спортивный разряд</th>';
+                if ($protocolData['discipline'] === 'D-10') {
+                    $html .= '<th>Город команды</th><th>Название команды</th>';
+                }
+                $html .= '</tr>';
+            }
+            
+            foreach ($protocolData['participants'] as $participant) {
+                $html .= '<tr>';
+                if ($protocolType === 'start') {
+                    $html .= '<td>' . htmlspecialchars($participant['lane'] ?? '') . '</td>';
+                    $html .= '<td>' . htmlspecialchars($participant['userId'] ?? '') . '</td>';
+                    $html .= '<td>' . htmlspecialchars($participant['fio'] ?? '') . '</td>';
+                    $html .= '<td>' . htmlspecialchars($participant['birthdata'] ?? '') . '</td>';
+                    $html .= '<td>' . htmlspecialchars($participant['sportzvanie'] ?? '') . '</td>';
+                    if ($protocolData['discipline'] === 'D-10') {
+                        $html .= '<td>' . htmlspecialchars($participant['teamCity'] ?? '') . '</td>';
+                        $html .= '<td>' . htmlspecialchars($participant['teamName'] ?? '') . '</td>';
+                    }
+                } else {
+                    $html .= '<td>' . htmlspecialchars($participant['place'] ?? '') . '</td>';
+                    $html .= '<td>' . htmlspecialchars($participant['finishTime'] ?? '') . '</td>';
+                    $html .= '<td>' . htmlspecialchars($participant['lane'] ?? '') . '</td>';
+                    $html .= '<td>' . htmlspecialchars($participant['userId'] ?? '') . '</td>';
+                    $html .= '<td>' . htmlspecialchars($participant['fio'] ?? '') . '</td>';
+                    $html .= '<td>' . htmlspecialchars($participant['birthdata'] ?? '') . '</td>';
+                    $html .= '<td>' . htmlspecialchars($participant['sportzvanie'] ?? '') . '</td>';
+                    if ($protocolData['discipline'] === 'D-10') {
+                        $html .= '<td>' . htmlspecialchars($participant['teamCity'] ?? '') . '</td>';
+                        $html .= '<td>' . htmlspecialchars($participant['teamName'] ?? '') . '</td>';
+                    }
+                }
+                $html .= '</tr>';
+            }
+            $html .= '</table><br><br>';
+        }
+        
+        $html .= '</body></html>';
+        
+        // Отправляем HTML файл
+        echo $html;
     } else {
         // Неизвестный формат - используем Excel
         $writer = new Xlsx($spreadsheet);
         $writer->setPreCalculateFormulas(false);
+        $writer->save('php://output');
     }
-    
-    $writer->save('php://output');
     
     error_log("УСПЕХ: Массовое скачивание протоколов завершено успешно");
     

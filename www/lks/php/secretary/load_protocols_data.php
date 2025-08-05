@@ -6,6 +6,7 @@
 
 require_once __DIR__ . "/../db/Database.php";
 require_once __DIR__ . "/age_group_calculator.php";
+require_once __DIR__ . "/../common/JsonProtocolManager.php";
 
 if (!defined('TEST_MODE') && session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -66,17 +67,8 @@ try {
         throw new Exception('Ошибка чтения конфигурации классов');
     }
     
-    // Подключаемся к Redis
-    $redis = new Redis();
-    try {
-        $connected = $redis->connect('redis', 6379, 5);
-        if (!$connected) {
-            throw new Exception('Не удалось подключиться к Redis');
-        }
-    } catch (Exception $e) {
-        error_log("Ошибка подключения к Redis: " . $e->getMessage());
-        $redis = null;
-    }
+    // Инициализируем менеджер JSON протоколов
+    $protocolManager = JsonProtocolManager::getInstance();
     
     $protocolsData = [];
     
@@ -165,6 +157,24 @@ try {
                         
                         $redisKey = "protocol:{$meroId}:{$boatClass}:{$sex}:{$dist}:{$groupName}";
                         
+                        // Проверяем, существует ли уже файл протокола
+                        if ($protocolManager->protocolExists($redisKey)) {
+                            // Загружаем существующий протокол
+                            $existingData = $protocolManager->loadProtocol($redisKey);
+                            if ($existingData) {
+                                error_log("✅ [LOAD_PROTOCOLS_DATA] Загружен существующий протокол: $redisKey");
+                                $protocolsData[] = [
+                                    'meroId' => (int)$meroId,
+                                    'discipline' => $boatClass,
+                                    'sex' => $sex,
+                                    'distance' => $dist,
+                                    'ageGroups' => [$existingData],
+                                    'created_at' => date('Y-m-d H:i:s')
+                                ];
+                                continue;
+                            }
+                        }
+                        
                         // Получаем участников для этой группы
                         $participants = getParticipantsForGroup($db, $meroId, $boatClass, $sex, $dist, $minAge, $maxAge);
                         
@@ -179,10 +189,8 @@ try {
                             'protected' => false
                         ];
                         
-                        // Сохраняем данные в Redis
-                        if ($redis) {
-                            $redis->setex($redisKey, 86400, json_encode($ageGroupData));
-                        }
+                        // Сохраняем данные в JSON файл
+                        $protocolManager->saveProtocol($redisKey, $ageGroupData);
                         
                         $protocolsData[] = [
                             'meroId' => (int)$meroId,
@@ -340,40 +348,49 @@ function assignLanesToParticipants($participants, $boatClass) {
         return $participants;
     }
     
-    // Если номеров дорожек нет, назначаем новые
-    error_log("🔄 [ASSIGN_LANES] Назначаем новые номера дорожек");
-    
     // Перемешиваем участников для случайного распределения
     shuffle($participants);
     
     // Назначаем номера дорожек
-    foreach ($participants as $index => &$participant) {
-        $lane = ($index % $maxLanes) + 1;
-        $participant['lane'] = $lane;
-        $participant['water'] = $lane; // Добавляем поле "вода" для совместимости
+    $laneNumber = 1;
+    foreach ($participants as &$participant) {
+        if ($laneNumber <= $maxLanes) {
+            $participant['lane'] = $laneNumber;
+            $participant['water'] = $laneNumber;
+            $laneNumber++;
+        } else {
+            $participant['lane'] = null;
+            $participant['water'] = null;
+        }
     }
+    
+    error_log("🔄 [ASSIGN_LANES] Назначены номера дорожек для {$boatClass}: " . count($participants) . " участников");
     
     return $participants;
 }
 
 /**
- * Определение максимального количества дорожек для типа лодки
+ * Получение максимального количества дорожек для типа лодки
  */
 function getMaxLanesForBoat($boatClass) {
     switch ($boatClass) {
-        case 'D-10':
-            return 6; // Драконы - 6 дорожек
         case 'K-1':
         case 'C-1':
-            return 9; // Одиночные - 9 дорожек
+        case 'HD-1':
+        case 'OD-1':
+            return 8; // 8 дорожек для одиночных лодок
         case 'K-2':
         case 'C-2':
-            return 9; // Двойки - 9 дорожек
+        case 'OD-2':
+            return 6; // 6 дорожек для парных лодок
         case 'K-4':
         case 'C-4':
-            return 9; // Четверки - 9 дорожек
+        case 'OC-1':
+            return 4; // 4 дорожки для четверок
+        case 'D-10':
+            return 3; // 3 дорожки для драконов
         default:
-            return 9; // По умолчанию 9 дорожек
+            return 8; // По умолчанию 8 дорожек
     }
 }
 ?> 

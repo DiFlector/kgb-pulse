@@ -2,6 +2,7 @@
 session_start();
 require_once __DIR__ . '/../common/Auth.php';
 require_once __DIR__ . '/../db/Database.php';
+require_once __DIR__ . '/../common/JsonProtocolManager.php';
 
 // Включаем вывод ошибок для отладки
 error_reporting(E_ALL);
@@ -34,7 +35,7 @@ if (!$meroId || !$participantOid || !$groupKey) {
 }
 
 try {
-    $db = new Database();
+    $db = Database::getInstance();
     
     // Получаем данные участника
     $stmt = $db->prepare("
@@ -53,97 +54,67 @@ try {
         exit;
     }
     
-    // Загружаем данные протоколов
-    $protocolsDir = __DIR__ . '/../../../files/json/protocols/';
-    $filename = $protocolsDir . "protocols_{$meroId}.json";
+    // Инициализируем менеджер JSON протоколов
+    $protocolManager = JsonProtocolManager::getInstance();
     
-    if (!file_exists($filename)) {
-        echo json_encode(['success' => false, 'message' => 'Файл протоколов не найден']);
+    // Загружаем протокол
+    $protocolData = $protocolManager->loadProtocol($groupKey);
+    
+    if (!$protocolData) {
+        echo json_encode(['success' => false, 'message' => 'Протокол не найден']);
         exit;
     }
     
-    $jsonData = file_get_contents($filename);
-    $protocolsData = json_decode($jsonData, true);
-    
-    // Находим нужную группу
-    $groupFound = false;
-    foreach ($protocolsData as &$protocol) {
-        foreach ($protocol['ageGroups'] as &$ageGroup) {
-            if ($ageGroup['redisKey'] === $groupKey) {
-                // Проверяем, не добавлен ли уже участник
-                foreach ($ageGroup['participants'] as $existingParticipant) {
-                    if ($existingParticipant['userId'] == $participant['userid']) {
-                        echo json_encode(['success' => false, 'message' => 'Участник уже добавлен в эту группу']);
-                        exit;
-                    }
-                }
-                
-                // Определяем максимальное количество дорожек для типа лодки
-                $maxLanes = getMaxLanesForBoat($protocol['discipline']);
-                
-                // Находим свободную дорожку
-                $usedLanes = [];
-                foreach ($ageGroup['participants'] as $existingParticipant) {
-                    if (isset($existingParticipant['lane']) && $existingParticipant['lane'] !== null) {
-                        $usedLanes[] = $existingParticipant['lane'];
-                    }
-                }
-                
-                // Назначаем первую свободную дорожку
-                $assignedLane = 1;
-                for ($lane = 1; $lane <= $maxLanes; $lane++) {
-                    if (!in_array($lane, $usedLanes)) {
-                        $assignedLane = $lane;
-                        break;
-                    }
-                }
-                
-                // Добавляем участника
-                $ageGroup['participants'][] = [
-                    'userId' => $participant['userid'],
-                    'userid' => $participant['userid'], // Добавляем дублирующее поле для совместимости
-                    'fio' => $participant['fio'],
-                    'sex' => $participant['sex'],
-                    'birthdata' => $participant['birthdata'],
-                    'sportzvanie' => $participant['sportzvanie'],
-                    'teamName' => $participant['teamname'] ?? '',
-                    'teamCity' => $participant['teamcity'] ?? '',
-                    'lane' => $assignedLane,
-                    'water' => $assignedLane, // Добавляем поле "вода" для совместимости
-                    'place' => null,
-                    'finishTime' => null,
-                    'addedManually' => true,
-                    'addedAt' => date('Y-m-d H:i:s'),
-                    'discipline' => $protocol['discipline'] ?? '',
-                    'groupKey' => $ageGroup['redisKey'] ?? ''
-                ];
-                
-                $groupFound = true;
-                break 2;
-            }
+    // Проверяем, не добавлен ли уже участник
+    foreach ($protocolData['participants'] as $existingParticipant) {
+        if (($existingParticipant['userId'] ?? $existingParticipant['userid']) == $participant['userid']) {
+            echo json_encode(['success' => false, 'message' => 'Участник уже добавлен в эту группу']);
+            exit;
         }
     }
     
-    if (!$groupFound) {
-        echo json_encode(['success' => false, 'message' => 'Группа не найдена']);
-        exit;
-    }
+    // Определяем максимальное количество дорожек для типа лодки
+    $maxLanes = getMaxLanesForBoat($protocolData['discipline'] ?? 'K-1');
     
-    // Сохраняем в Redis
-    $redis = new Redis();
-    $redis->connect('redis', 6379);
-    
-    foreach ($protocolsData as $protocol) {
-        foreach ($protocol['ageGroups'] as $ageGroup) {
-            if ($ageGroup['redisKey'] === $groupKey) {
-                $redis->setex($ageGroup['redisKey'], 86400, json_encode($ageGroup));
-                break 2;
-            }
+    // Находим свободную дорожку
+    $usedLanes = [];
+    foreach ($protocolData['participants'] as $existingParticipant) {
+        if (isset($existingParticipant['lane']) && $existingParticipant['lane'] !== null) {
+            $usedLanes[] = $existingParticipant['lane'];
         }
     }
+    
+    // Назначаем первую свободную дорожку
+    $assignedLane = 1;
+    for ($lane = 1; $lane <= $maxLanes; $lane++) {
+        if (!in_array($lane, $usedLanes)) {
+            $assignedLane = $lane;
+            break;
+        }
+    }
+    
+    // Добавляем участника
+    $protocolData['participants'][] = [
+        'userId' => $participant['userid'],
+        'userid' => $participant['userid'], // Добавляем дублирующее поле для совместимости
+        'fio' => $participant['fio'],
+        'sex' => $participant['sex'],
+        'birthdata' => $participant['birthdata'],
+        'sportzvanie' => $participant['sportzvanie'],
+        'teamName' => $participant['teamname'] ?? '',
+        'teamCity' => $participant['teamcity'] ?? '',
+        'lane' => $assignedLane,
+        'water' => $assignedLane, // Добавляем поле "вода" для совместимости
+        'place' => null,
+        'finishTime' => null,
+        'addedManually' => true,
+        'addedAt' => date('Y-m-d H:i:s'),
+        'discipline' => $protocolData['discipline'] ?? '',
+        'groupKey' => $groupKey
+    ];
     
     // Сохраняем в JSON файл
-    file_put_contents($filename, json_encode($protocolsData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+    $protocolManager->saveProtocol($groupKey, $protocolData);
     
     echo json_encode([
         'success' => true,
