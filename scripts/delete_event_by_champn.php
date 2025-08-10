@@ -17,8 +17,8 @@ function main(): void {
     }
 
     if ($champn === null) {
-        // Fallback: удалим по имени, если оно содержит ТЕСТОВОЕ
-        $eventRows = $db->fetchAll("SELECT oid, champn, meroname FROM meros WHERE meroname ILIKE '%ТЕСТОВОЕ%' ORDER BY oid DESC");
+        // Fallback: удалим по имени, если оно содержит ключевые слова
+        $eventRows = $db->fetchAll("SELECT oid, champn, meroname FROM meros WHERE meroname ILIKE '%Мастерс%' OR meroname ILIKE '%Дракон%' ORDER BY oid DESC");
     } else {
         $eventRows = $db->fetchAll('SELECT oid, champn, meroname FROM meros WHERE champn = ?', [$champn]);
         if (!$eventRows) {

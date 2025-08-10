@@ -429,21 +429,12 @@ class SecretaryEventManager {
      * Определение максимального количества дорожек для типа лодки
      */
     private function getMaxLanesForBoat($boatClass) {
-        switch ($boatClass) {
-            case 'D-10':
-                return 6; // Драконы - 6 дорожек
-            case 'K-1':
-            case 'C-1':
-                return 9; // Одиночные - 9 дорожек
-            case 'K-2':
-            case 'C-2':
-                return 9; // Двойки - 9 дорожек
-            case 'K-4':
-            case 'C-4':
-                return 9; // Четверки - 9 дорожек
-            default:
-                return 9; // По умолчанию 9 дорожек
+        $cls = strtoupper(trim((string)$boatClass));
+        // Универсально: все классы, начинающиеся с 'D' (драконы) — 6 дорожек, иначе — 10
+        if (strpos($cls, 'D') === 0) {
+            return 6;
         }
+        return 10;
     }
     
     /**

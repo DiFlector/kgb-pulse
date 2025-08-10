@@ -82,11 +82,17 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
         .protocols-container {
             padding: 20px;
         }
+        /* Убираем внутренние горизонтальные паддинги у колонок, чтобы убрать вертикальную серую полосу между панелями */
+        .protocols-row > [class^="col-"],
+        .protocols-row > [class*=" col-"] {
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
         /* Обеспечение одинаковой высоты контейнеров протоколов */
         .row {
             display: flex;
             flex-wrap: wrap;
-            align-items: stretch;
+            align-items: flex-start; /* не растягиваем колонки по высоте */
         }
         .row > .col-md-6 {
             display: flex;
@@ -95,22 +101,22 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
         .protocol-panel {
             display: flex;
             flex-direction: column;
-            height: 100%;
-            min-height: 600px;
+            height: auto; /* убираем фиксированную высоту панели */
+            min-height: 0; /* без принудительного растягивания */
         }
         .protocols-content {
-            flex: 1;
+            flex: 0 0 auto; /* высота ровно по содержимому */
             display: flex;
             flex-direction: column;
-            overflow-y: auto;
-            min-height: 500px;
+            overflow-y: visible; /* контент без внутренней прокрутки, чтобы не оставался пустой блок */
+            min-height: 0; /* позволяем контейнеру уменьшаться по содержимому */
         }
         /* Обеспечение одинаковой высоты групп протоколов */
         .protocol-group {
-            flex: 1;
+            flex: 0 0 auto;
             display: flex;
             flex-direction: column;
-            min-height: 200px;
+            min-height: 0; /* без лишнего вертикального пространства */
         }
         /* Синхронизация высоты соответствующих групп протоколов */
         .protocols-content {
@@ -118,21 +124,19 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
             flex-direction: column;
         }
         .protocols-content .protocol-group {
-            flex: 1;
+            flex: 0 0 auto;
             display: flex;
             flex-direction: column;
             margin-bottom: 20px;
         }
-        .protocols-content .protocol-group:last-child {
-            margin-bottom: 0;
-        }
+        /* Не обнуляем отступ у последней группы, чтобы между первой и второй колонкой был такой же зазор */
         /* Обеспечение одинаковой высоты для соответствующих групп */
         .protocol-group {
             border: 1px solid #e9ecef;
             border-radius: 6px;
             padding: 15px;
             margin-bottom: 20px;
-            min-height: 150px; /* Уменьшаем минимальную высоту для групп */
+            min-height: 0; /* без фиксированной высоты */
         }
         /* Синхронизация высоты таблиц */
         .protocol-table {
@@ -143,7 +147,7 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
         }
         /* Дополнительные стили для синхронизации */
         .protocol-panel {
-            height: 100%;
+            height: auto; /* не растягиваем панель на всю высоту колонки */
             display: flex;
             flex-direction: column;
         }
@@ -153,12 +157,12 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
             flex-direction: column;
         }
         .protocol-group {
-            flex: 1;
+            flex: 0 0 auto; /* не занимать оставшееся пространство */
             display: flex;
             flex-direction: column;
         }
         .age-group {
-            flex: 1;
+            flex: 0 0 auto; /* не растягивать блок возрастной группы */
             display: flex;
             flex-direction: column;
             width: 100%; /* Обеспечиваем полную ширину */
@@ -302,7 +306,7 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             display: flex;
             flex-direction: column;
-            height: 100%;
+            height: auto; /* не растягивать по высоте */
             width: 100%; /* Обеспечиваем полную ширину */
             box-sizing: border-box; /* Учитываем границы в ширине */
         }
@@ -371,17 +375,17 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
             overflow-wrap: break-word; /* Совместимость с разными браузерами */
         }
         .protocol-group {
-            flex: 1;
+            flex: 0 0 auto;
             display: flex;
             flex-direction: column;
-            min-height: 200px;
+            min-height: 0; /* убираем принудительную высоту */
             width: 100%; /* Обеспечиваем полную ширину */
             margin-bottom: 20px;
             box-sizing: border-box; /* Учитываем границы в ширине */
         }
         /* Синхронизация высоты групп протоколов */
         .protocols-content .protocol-group {
-            margin-bottom: 20px;
+            margin-bottom: 24px; /* единый вертикальный отступ между всеми протоколами */
         }
         .protocols-content .protocol-group:last-child {
             margin-bottom: 0;
@@ -392,7 +396,7 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
             flex-direction: column;
         }
         .protocols-content .protocol-group {
-            flex: 1;
+            flex: 0 0 auto; /* не растягиваем группу по высоте */
             display: flex;
             flex-direction: column;
         }
@@ -650,7 +654,7 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
         </div>
 
         <!-- Основной контент -->
-        <div class="row">
+        <div class="row protocols-row g-0">
             <div class="col-md-6">
                 <div class="protocol-panel start-protocols">
                     <h3><i class="fas fa-flag-checkered"></i> Стартовые протоколы</h3>

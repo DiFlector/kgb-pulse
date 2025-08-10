@@ -142,7 +142,8 @@ class JsonProtocolManager {
             $filepath = $this->getFilePathFromRedisKey($redisKey);
             
             if (!file_exists($filepath)) {
-                error_log("⚠️ [JSON_PROTOCOL] Файл протокола не найден: $filepath");
+                // Файл отсутствует — это нормальный сценарий при первичном создании протокола
+                // Возвращаем null без логирования предупреждений
                 return null;
             }
             

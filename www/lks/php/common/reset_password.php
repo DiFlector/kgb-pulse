@@ -15,7 +15,8 @@ function sendPasswordReset($email) {
         $pdo = $db->getPDO();
         
         // Проверяем существование пользователя
-        $stmt = $pdo->prepare("SELECT userid, fio FROM users WHERE email = ? AND active = true");
+        // В БД нет колонки active; считаем активным любого пользователя с таким email
+        $stmt = $pdo->prepare("SELECT userid, fio FROM users WHERE email = ?");
         $stmt->execute([$email]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
         

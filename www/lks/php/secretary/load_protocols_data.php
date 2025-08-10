@@ -164,12 +164,43 @@ try {
                             // Загружаем существующий протокол
                             $existingData = $protocolManager->loadProtocol($redisKey);
                             if ($existingData) {
-                                // Если протокол пустой, попробуем заполнить участников заново (важно для D-10/MIX)
+                                $shouldRecalc = false;
+                                // Пересобираем участников для драконов всегда (чтобы исключить попадание чужих категорий),
+                                // НО не трогаем, если уже есть результаты (place/finishTime)
+                                if (stripos($boatClass, 'D') === 0) {
+                                    $hasResults = false;
+                                    foreach (($existingData['participants'] ?? []) as $p) {
+                                        if (!empty($p['place']) || !empty($p['finishTime'])) { $hasResults = true; break; }
+                                    }
+                                    if (!$hasResults) { $shouldRecalc = true; }
+                                }
+                                // Если протокол пустой — тоже пересчитываем
                                 if (!isset($existingData['participants']) || count($existingData['participants']) === 0) {
-                                    error_log("ℹ️ [LOAD_PROTOCOLS_DATA] Протокол пустой, формируем участников заново: $redisKey");
+                                    $shouldRecalc = true;
+                                }
+
+                                if ($shouldRecalc) {
+                                    error_log("ℹ️ [LOAD_PROTOCOLS_DATA] Пересобираем участников: $redisKey");
                                     $recalcParticipants = getParticipantsForGroup($db, $meroId, $boatClass, $sex, $dist, $minAge, $maxAge, $ageGroupList);
                                     $existingData['participants'] = $recalcParticipants;
+                                    // Автоматически назначаем воды для одиночных лодок
+                                    if (in_array($boatClass, ['K-1', 'C-1', 'HD-1', 'OD-1', 'OC-1'], true)) {
+                                        $existingData['participants'] = assignLanesToParticipants($existingData['participants'], $boatClass);
+                                    }
                                     $protocolManager->updateProtocol($redisKey, $existingData);
+                                } else {
+                                    // Если участники есть, но у всех нет назначенных дорожек — автозаполним для одиночных лодок
+                                    if (in_array($boatClass, ['K-1', 'C-1', 'HD-1', 'OD-1', 'OC-1'], true)) {
+                                        $allLanesEmpty = true;
+                                        foreach ($existingData['participants'] as $p) {
+                                            if (!empty($p['lane']) || !empty($p['water'])) { $allLanesEmpty = false; break; }
+                                        }
+                                        if ($allLanesEmpty) {
+                                            error_log("ℹ️ [LOAD_PROTOCOLS_DATA] Автоприсвоение дорожек для одиночных лодок (пустые lane): $redisKey");
+                                            $existingData['participants'] = assignLanesToParticipants($existingData['participants'], $boatClass);
+                                            $protocolManager->updateProtocol($redisKey, $existingData);
+                                        }
+                                    }
                                 }
 
                                 error_log("✅ [LOAD_PROTOCOLS_DATA] Загружен существующий протокол: $redisKey");
@@ -190,9 +221,12 @@ try {
                         
                         // Получаем участников для этой группы
                         $participants = getParticipantsForGroup($db, $meroId, $boatClass, $sex, $dist, $minAge, $maxAge, $ageGroupList);
-                        
-                        // НЕ назначаем номера дорожек автоматически - жеребьевка должна быть ручной
-                        // $participants = assignLanesToParticipants($participants, $boatClass);
+
+                        // Автоматически назначаем номера дорожек для одиночных лодок
+                        // (K-1, C-1, HD-1, OD-1, OC-1). Для прочих типов — только через жеребьёвку.
+                        if (in_array($boatClass, ['K-1', 'C-1', 'HD-1', 'OD-1', 'OC-1'], true)) {
+                            $participants = assignLanesToParticipants($participants, $boatClass);
+                        }
                         
                         $ageGroupData = [
                             'name' => $fullGroupName, // Используем полное название группы с диапазоном возрастов
@@ -261,7 +295,7 @@ function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $min
     $sql = "
         SELECT 
             u.oid, u.userid, u.fio, u.sex, u.birthdata, u.sportzvanie, u.city,
-            t.teamname, t.teamcity, lr.teams_oid AS team_id
+            t.teamname, t.teamcity, lr.teams_oid AS team_id, lr.role AS role
         FROM users u
         LEFT JOIN listreg lr ON u.oid = lr.users_oid
         LEFT JOIN teams t ON lr.teams_oid = t.oid
@@ -330,8 +364,11 @@ function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $min
             // Определяем тип команды по составу
             $hasM = false; $hasW = false;
             foreach ($team['members'] as $m) {
-                if (($m['sex'] ?? '') === 'М') $hasM = true;
-                if (($m['sex'] ?? '') === 'Ж') $hasW = true;
+                // Учитываем всех участников, кроме рулевого и барабанщика
+                $role = (string)($m['role'] ?? '');
+                if ($role === 'steerer' || $role === 'drummer') { continue; }
+                if (($m['sex'] ?? '') === 'М') { $hasM = true; }
+                if (($m['sex'] ?? '') === 'Ж') { $hasW = true; }
             }
             $teamSex = $hasM && $hasW ? 'MIX' : ($hasM ? 'M' : 'W');
 
@@ -354,16 +391,28 @@ function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $min
                 }
                 // Проверяем дисциплину пользователя
                 $disciplineSql = "
-                    SELECT discipline 
+                    SELECT oid, discipline, role 
                     FROM listreg 
-                    WHERE users_oid = ? AND meros_oid = ?
+                    WHERE users_oid = ? AND meros_oid = ? AND teams_oid = ?
                 ";
                 $disciplineStmt = $db->prepare($disciplineSql);
-                $disciplineStmt->execute([$member['oid'], $meroId]);
+                $disciplineStmt->execute([$member['oid'], $meroId, $tid]);
                 $disciplineData = $disciplineStmt->fetch(PDO::FETCH_ASSOC);
                 if (!$disciplineData) continue;
                 $discipline = json_decode($disciplineData['discipline'], true);
                 if (!$discipline || !isset($discipline[$boatClass])) continue;
+                // Фильтр по дистанции: команда/участник должен быть заявлен на требуемую дистанцию
+                if (!disciplineHasDistance($discipline[$boatClass], $distance)) continue;
+
+                // Дополнительная проверка соответствия пола команды и выбранной категории
+                $discSexField = $discipline[$boatClass]['sex'] ?? null;
+                $discSex = null;
+                if (is_array($discSexField) && !empty($discSexField)) { $discSex = strtoupper(trim((string)$discSexField[0])); }
+                elseif (is_string($discSexField)) { $discSex = strtoupper(trim($discSexField)); }
+                if ($discSex && $discSex !== strtoupper($teamSex)) {
+                    // Регистрация указана как иной тип (M/W/MIX), пропускаем
+                    continue;
+                }
 
                 // Номера дорожек (если уже задавались)
                 $existingLane = $discipline[$boatClass]['lane'] ?? null;
@@ -382,6 +431,9 @@ function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $min
                     'teamName' => $team['name'] ?? '',
                     'teamCity' => $team['city'] ?? '',
                     'teamId' => $tid,
+                    'teams_oid' => $tid,
+                    'reg_oid' => $disciplineData['oid'] ?? null,
+                    'role' => $member['role'] ?? null,
                     'lane' => $existingLane,
                     'water' => $existingWater ?? $existingLane,
                     'place' => null,
@@ -459,6 +511,8 @@ function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $min
                 if (!$disciplineData) continue;
                 $discipline = json_decode($disciplineData['discipline'], true);
                 if (!$discipline || !isset($discipline[$boatClass])) continue;
+                // Фильтр по дистанции экипажа
+                if (!disciplineHasDistance($discipline[$boatClass], $distance)) continue;
 
                 // Номера дорожек
                 $existingLane = $discipline[$boatClass]['lane'] ?? null;
@@ -512,7 +566,7 @@ function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $min
             if ($disciplineData) {
                 $discipline = json_decode($disciplineData['discipline'], true);
                 
-                if ($discipline && isset($discipline[$boatClass])) {
+                if ($discipline && isset($discipline[$boatClass]) && disciplineHasDistance($discipline[$boatClass], $distance)) {
                     $addedCount++;
                     
                     // Загружаем существующие номера дорожек из базы данных
@@ -631,24 +685,46 @@ function assignLanesToParticipants($participants, $boatClass) {
  * Получение максимального количества дорожек для типа лодки
  */
 function getMaxLanesForBoat($boatClass) {
-    switch ($boatClass) {
-        case 'K-1':
-        case 'C-1':
-        case 'HD-1':
-        case 'OD-1':
-            return 8; // 8 дорожек для одиночных лодок
-        case 'K-2':
-        case 'C-2':
-        case 'OD-2':
-            return 6; // 6 дорожек для парных лодок
-        case 'K-4':
-        case 'C-4':
-        case 'OC-1':
-            return 4; // 4 дорожки для четверок
-        case 'D-10':
-            return 6; // 6 дорожек для драконов
-        default:
-            return 8; // По умолчанию 8 дорожек
+    $cls = strtoupper(trim((string)$boatClass));
+    // Универсально: любые драконьи классы (начинаются с 'D') — 6, иначе — 10
+    if (strpos($cls, 'D') === 0) {
+        return 6;
     }
+    return 10;
+}
+
+/**
+ * Проверка: заявлен ли участник/экипаж на конкретную дистанцию
+ * Учитывает форматы вида ["200, 500", "1000"] или ["200","500"]
+ */
+function disciplineHasDistance($disciplineEntry, $targetDistance) {
+    if (!isset($disciplineEntry['dist'])) return false;
+    $distField = $disciplineEntry['dist'];
+    $distValues = [];
+    if (is_array($distField)) {
+        foreach ($distField as $item) {
+            if (is_array($item)) {
+                foreach ($item as $sub) {
+                    foreach (explode(',', (string)$sub) as $d) {
+                        $val = trim((string)$d);
+                        if ($val !== '') $distValues[] = $val;
+                    }
+                }
+            } else {
+                foreach (explode(',', (string)$item) as $d) {
+                    $val = trim((string)$d);
+                    if ($val !== '') $distValues[] = $val;
+                }
+            }
+        }
+    } else {
+        foreach (explode(',', (string)$distField) as $d) {
+            $val = trim((string)$d);
+            if ($val !== '') $distValues[] = $val;
+        }
+    }
+    // Сравниваем как строки без пробелов
+    $target = trim((string)$targetDistance);
+    return in_array($target, $distValues, true);
 }
 ?> 

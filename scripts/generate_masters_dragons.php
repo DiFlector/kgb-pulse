@@ -22,6 +22,20 @@ require_once __DIR__ . '/../lks/php/db/Database.php';
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
+// Форматирование даты мероприятия в виде "10 августа 2025"
+function formatRussianDateHuman(?int $timestamp = null): string {
+    $timestamp = $timestamp ?? time();
+    $day = (int)date('j', $timestamp);
+    $month = (int)date('n', $timestamp);
+    $year = (int)date('Y', $timestamp);
+    $months = [
+        1 => 'января', 2 => 'февраля', 3 => 'марта', 4 => 'апреля', 5 => 'мая', 6 => 'июня',
+        7 => 'июля', 8 => 'августа', 9 => 'сентября', 10 => 'октября', 11 => 'ноября', 12 => 'декабря'
+    ];
+    $monthName = $months[$month] ?? '';
+    return sprintf('%d %s %d', $day, $monthName, $year);
+}
+
 // Утилиты
 function generateRussianName(string $sex): string {
     $maleNames = ['Алексей','Иван','Дмитрий','Сергей','Андрей','Павел','Максим','Николай','Владимир','Егор'];
@@ -92,8 +106,8 @@ function ensureEvent(Database $db, int &$merosOidOut): array {
     $classDistance = [
         'D-10' => [
             'sex' => ['M','W','MIX'],
-            // Для каждого пола строка с перечислением дистанций как в существующих данных
-            'dist' => ['200, 500, 1000','200, 500, 1000','200, 500, 1000'],
+            // Для каждого пола строка с перечислением дистанций (200, 500, 1600)
+            'dist' => ['200, 500, 1600','200, 500, 1600','200, 500, 1600'],
             // Возрастные группы в формате, который парсит система
             'age_group' => [
                 'группа 1: 18-29, группа 2: 30-39, группа 3: 40-49, группа 4: 50-59, группа 5: 60-69',
@@ -106,7 +120,8 @@ function ensureEvent(Database $db, int &$merosOidOut): array {
     $champn = makeChampn();
     $data = [
         'champn' => $champn,
-        'merodata' => date('Y-m-d'),
+        // Храним дату в человекочитаемом русском формате
+        'merodata' => formatRussianDateHuman(),
         'meroname' => $meroname,
         'class_distance' => json_encode($classDistance, JSON_UNESCAPED_UNICODE),
         'defcost' => 0,
@@ -135,6 +150,36 @@ function parseAgeGroupsString(string $groupsStr): array {
         }
     }
     return $ranges;
+}
+
+/**
+ * Выбирает случайный непустой поднабор дистанций для команды на основе доступных.
+ * Возвращает массив с двумя строками:
+ *  - csv: строка вида "200, 1600"
+ *  - label: строка для имени команды вида "200-1600"
+ */
+function chooseTeamDistancesFromAvailable(string $availableCsv): array {
+    // Парсим доступные дистанции (например, "200, 500, 1600") → [200,500,1600]
+    $parts = array_filter(array_map(static function ($v) {
+        $v = trim((string)$v);
+        if ($v === '') { return null; }
+        return (int)$v;
+    }, preg_split('/\s*,\s*/', $availableCsv)));
+    if (empty($parts)) {
+        return ['csv' => $availableCsv, 'label' => str_replace([', ', ','], '-', $availableCsv)];
+    }
+    // Случайный размер поднабора от 1 до N
+    $n = count($parts);
+    $subsetSize = rand(1, $n);
+    // Случайный набор уникальных индексов
+    $indexes = array_rand($parts, $subsetSize);
+    if (!is_array($indexes)) { $indexes = [$indexes]; }
+    $chosen = [];
+    foreach ($indexes as $idx) { $chosen[] = (int)$parts[$idx]; }
+    sort($chosen, SORT_NUMERIC);
+    $csv = implode(', ', $chosen);
+    $label = implode('-', $chosen);
+    return ['csv' => $csv, 'label' => $label];
 }
 
 function createTeam(Database $db, string $teamName, string $teamCity): int {
@@ -243,8 +288,10 @@ function main(): void {
 
         $teamCounter = 1;
         $userSeed = 100000; // для генерации уникальных телефонов/емейлов
-        $distCsvDefault = '200, 500, 1000';
+        $distCsvDefault = '200, 500, 1600';
 
+        // Будем собирать метаданные команд, чтобы присвоить X/Y имена после полной генерации
+        $teamsMeta = [];
         foreach ($sexes as $sexIdx => $boatSexCat) {
             $groupsStr = $ageGroupsPerSex[$sexIdx] ?? '';
             $ranges = parseAgeGroupsString($groupsStr);
@@ -256,7 +303,14 @@ function main(): void {
                 $teamsInGroup = max(0, min(6, rand(0, 6)));
 
                 for ($t=0; $t < $teamsInGroup; $t++) {
-                    $teamName = sprintf('Masters D-10 %s группа %d #%d', $boatSexCat, $groupIndex+1, $teamCounter);
+                    // Имя команды по формату: D-10_{пол}_{дистанция}_{возрастная группа}_{номер}/{всего}
+                    $ageGroupLabel = sprintf('группа %d: %d-%d', $groupIndex + 1, $ageMin, $ageMax);
+                    // Выбираем для команды случайный набор дистанций из доступных
+                    $teamDist = chooseTeamDistancesFromAvailable($distCsv);
+                    $teamDistCsv = $teamDist['csv'];        // для поля discipline.dist
+                    $distLabel   = $teamDist['label'];      // для названия команды
+                    // Нумерация внутри группы: $t+1 из $teamsInGroup
+                    $teamName = sprintf('D-10_%s_%s_%s_%d/%d', $boatSexCat, $distLabel, $ageGroupLabel, $t + 1, $teamsInGroup);
                     $teamCity = pickCity();
                     $teamOid = createTeam($db, $teamName, $teamCity);
                     $teamCounter++;
@@ -296,6 +350,7 @@ function main(): void {
 
                     // Сгенерируем участников и регистрации
                     $sexCursor = 0;
+                    $rowerAges = [];
                     foreach ($rolesPlan as $role) {
                         $sex = $role === 'rower' ? $rowerSexes[$sexCursor++] : array_shift($extraRolesSexes);
 
@@ -310,24 +365,62 @@ function main(): void {
                         $city = $teamCity;
 
                         $userOid = ensureUser($db, $fio, $sex, $email, $tel, $birth, $city);
-                        registerParticipant($db, $userOid, $merosOid, $teamOid, $boatSexCat, $distCsv, $role);
+                        if ($role === 'rower') { $rowerAges[] = (int)($age); }
+                        // Вносим в регистрацию выбранный поднабор дистанций команды
+                        registerParticipant($db, $userOid, $merosOid, $teamOid, $boatSexCat, $teamDistCsv, $role);
 
                         // Внесём строку в Excel
                         $row = [
                             $teamOid, $teamName, $teamCity, 'D-10', $boatSexCat,
-                            sprintf('группа %d: %d-%d', $groupIndex+1, $ageMin, $ageMax),
-                            $distCsv, $userOid, $fio, $email, $tel, $sex, $birth, $role
+                            $ageGroupLabel,
+                            $teamDistCsv, $userOid, $fio, $email, $tel, $sex, $birth, $role
                         ];
                         foreach ($row as $i => $val) { $sheet->setCellValueByColumnAndRow($i+1, $excelRow, $val); }
                         $excelRow++;
                     }
 
                     updateTeamCount($db, $teamOid);
+
+                    // D-10: возрастная группа команды по САМОМУ МЛАДШЕМУ гребцу
+                    $youngestAge = 0;
+                    if (!empty($rowerAges)) { $youngestAge = min($rowerAges); }
+                    $computedAgeGroupLabel = $ageGroupLabel;
+                    foreach ($ranges as $idx2 => $r2) {
+                        [$gMin, $gMax] = $r2;
+                        if ($youngestAge >= $gMin && $youngestAge <= $gMax) {
+                            $computedAgeGroupLabel = sprintf('группа %d: %d-%d', $idx2 + 1, $gMin, $gMax);
+                            break;
+                        }
+                    }
+                    $teamsMeta[] = [
+                        'teamOid' => $teamOid,
+                        'sex' => $boatSexCat,
+                        'distLabel' => $distLabel,
+                        'ageGroupLabel' => $computedAgeGroupLabel,
+                    ];
                 }
             }
         }
 
         $pdo->commit();
+
+        // Второй проход: присвоим итоговые имена командам с нумерацией X/Y по ключу {пол лодки, набор дистанций, возрастная группа}
+        $bucketTotals = [];
+        foreach ($teamsMeta as $tm) {
+            $key = $tm['sex'] . '|' . $tm['distLabel'] . '|' . $tm['ageGroupLabel'];
+            if (!isset($bucketTotals[$key])) { $bucketTotals[$key] = 0; }
+            $bucketTotals[$key]++;
+        }
+        $bucketIndex = [];
+        foreach ($teamsMeta as $tm) {
+            $key = $tm['sex'] . '|' . $tm['distLabel'] . '|' . $tm['ageGroupLabel'];
+            if (!isset($bucketIndex[$key])) { $bucketIndex[$key] = 0; }
+            $bucketIndex[$key]++;
+            $num = $bucketIndex[$key];
+            $total = $bucketTotals[$key];
+            $finalName = sprintf('D-10_%s_%s_%s_%d/%d', $tm['sex'], $tm['distLabel'], $tm['ageGroupLabel'], $num, $total);
+            $db->update('teams', ['teamname' => $finalName, 'team_name' => $finalName], ['oid' => $tm['teamOid']]);
+        }
 
         // Сохраняем Excel
         // Сохраним файл в проекте (том ./www смонтирован в контейнер)
