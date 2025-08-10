@@ -10,54 +10,24 @@ if (!$auth->isAuthenticated() || !in_array($auth->getUserRole(), ['Organizer', '
 $userRole = $auth->getUserRole();
 $currentUser = $auth->getCurrentUser();
 $userName = $currentUser['fio'] ?? 'Пользователь';
+
+$pageTitle = 'Очередь спортсменов - Панель организатора';
+$pageHeader = 'Очередь спортсменов';
+$pageIcon = 'fas fa-clock';
+
+// Дополнительные стили для этой страницы
+$additionalCSS = [
+    '/lks/css/style-clean.css'
+];
+
+include '../includes/header.php'; 
 ?>
 
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Очередь спортсменов - Панель организатора</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="../../css/style.css" rel="stylesheet">
-    <style>
-        .team-card {
-            border-left: 4px solid #dc3545;
-            background: #fff8f8;
-        }
-        .queue-card {
-            border-left: 4px solid #ffc107;
-            background: #fffbf0;
-        }
-        .participant-row {
-            border-bottom: 1px solid #eee;
-            padding: 10px 0;
-        }
-        .participant-row:last-child {
-            border-bottom: none;
-        }
-        .role-badge {
-            font-size: 0.75rem;
-        }
-        .loading-spinner {
-            display: none;
-        }
-    </style>
-</head>
-<body>
-    <?php include '../includes/header.php'; ?>
-
     <!-- Основной контент -->
-    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-        <h1 class="h2">
-            <i class="fas fa-clock me-2"></i>Очередь спортсменов
-        </h1>
-        <div class="btn-toolbar mb-2 mb-md-0">
-            <button type="button" class="btn btn-primary" onclick="refreshData()">
-                <i class="fas fa-sync-alt"></i> Обновить
-            </button>
-        </div>
+    <div class="d-flex justify-content-end mb-3">
+        <button type="button" class="btn btn-primary" onclick="refreshData()">
+            <i class="fas fa-sync-alt"></i> Обновить
+        </button>
     </div>
 
     <!-- Фильтры и поиск -->
@@ -152,8 +122,29 @@ $userName = $currentUser['fio'] ?? 'Пользователь';
         Очередь пуста! Все спортсмены распределены.
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="../../js/libs/jquery/jquery-3.7.1.min.js"></script>
+    <style>
+        .team-card {
+            border-left: 4px solid #dc3545;
+            background: #fff8f8;
+        }
+        .queue-card {
+            border-left: 4px solid #ffc107;
+            background: #fffbf0;
+        }
+        .participant-row {
+            border-bottom: 1px solid #eee;
+            padding: 10px 0;
+        }
+        .participant-row:last-child {
+            border-bottom: none;
+        }
+        .role-badge {
+            font-size: 0.75rem;
+        }
+        .loading-spinner {
+            display: none;
+        }
+    </style>
     <script>
         let allQueueData = {}; // Хранилище всех данных для фильтрации
         
@@ -698,5 +689,5 @@ $userName = $currentUser['fio'] ?? 'Пользователь';
             }, 5000);
         }
     </script>
-</body>
-</html> 
+    
+<?php include '../includes/footer.php'; ?> 

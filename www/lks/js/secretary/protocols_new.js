@@ -484,58 +484,39 @@ class ProtocolsManager {
     syncContainerHeights() {
         const startContainer = document.getElementById('start-protocols');
         const finishContainer = document.getElementById('finish-protocols');
-        
-        if (!startContainer || !finishContainer) {
-            return;
-        }
+        if (!startContainer || !finishContainer) return;
 
-        // Получаем все группы протоколов
+        // Сбрасываем ранее выставленные min-height, чтобы мерить реальную высоту
+        startContainer.style.minHeight = '';
+        finishContainer.style.minHeight = '';
+
         const startGroups = startContainer.querySelectorAll('.protocol-group');
         const finishGroups = finishContainer.querySelectorAll('.protocol-group');
-        
-        // Синхронизируем высоту соответствующих групп
         const maxGroups = Math.max(startGroups.length, finishGroups.length);
-        
+
         for (let i = 0; i < maxGroups; i++) {
-            const startGroup = startGroups[i];
-            const finishGroup = finishGroups[i];
-            
-            if (startGroup && finishGroup) {
-                // Проверяем, есть ли участники в группах
-                const startHasParticipants = startGroup.querySelector('tbody tr:not([style*="display: none"])') && 
-                                          !startGroup.querySelector('tbody tr td[colspan]');
-                const finishHasParticipants = finishGroup.querySelector('tbody tr:not([style*="display: none"])') && 
-                                           !finishGroup.querySelector('tbody tr td[colspan]');
-                
-                // Если обе группы пустые, не устанавливаем минимальную высоту
-                if (!startHasParticipants && !finishHasParticipants) {
-                    startGroup.style.minHeight = 'auto';
-                    finishGroup.style.minHeight = 'auto';
-                    continue;
-                }
-                
-                // Находим максимальную высоту только для групп с участниками
-                const startHeight = startHasParticipants ? startGroup.offsetHeight : 0;
-                const finishHeight = finishHasParticipants ? finishGroup.offsetHeight : 0;
-                const maxHeight = Math.max(startHeight, finishHeight, 150); // Минимум 150px
-                
-                // Устанавливаем одинаковую высоту только если есть участники
-                if (startHasParticipants || finishHasParticipants) {
-                    startGroup.style.minHeight = maxHeight + 'px';
-                    finishGroup.style.minHeight = maxHeight + 'px';
-                }
-            }
+            const s = startGroups[i];
+            const f = finishGroups[i];
+            if (!s && !f) continue;
+
+            // Вычисляем наличие контента (участников). Даже если нет, держим минимальную высоту 150px для симметрии
+            const sHas = !!(s && s.querySelector('tbody tr:not([style*="display: none"])') && !s.querySelector('tbody tr td[colspan]'));
+            const fHas = !!(f && f.querySelector('tbody tr:not([style*="display: none"])') && !f.querySelector('tbody tr td[colspan]'));
+
+            const sHeight = s ? (sHas ? Math.max(s.scrollHeight, s.offsetHeight) : 150) : 150;
+            const fHeight = f ? (fHas ? Math.max(f.scrollHeight, f.offsetHeight) : 150) : 150;
+            const h = Math.max(sHeight, fHeight);
+
+            if (s) s.style.minHeight = h + 'px';
+            if (f) f.style.minHeight = h + 'px';
         }
-        
-        // Синхронизируем общую высоту контейнеров только если есть контент
-        const startHeight = startContainer.offsetHeight;
-        const finishHeight = finishContainer.offsetHeight;
-        const maxContainerHeight = Math.max(startHeight, finishHeight);
-        
-        if (maxContainerHeight > 0) {
-            startContainer.style.minHeight = maxContainerHeight + 'px';
-            finishContainer.style.minHeight = maxContainerHeight + 'px';
-        }
+
+        // Выравниваем общую высоту левой и правой колонок
+        const totalStart = Math.max(startContainer.scrollHeight, startContainer.offsetHeight);
+        const totalFinish = Math.max(finishContainer.scrollHeight, finishContainer.offsetHeight);
+        const H = Math.max(totalStart, totalFinish);
+        startContainer.style.minHeight = H + 'px';
+        finishContainer.style.minHeight = H + 'px';
     }
 
     // Генерация HTML для протоколов
@@ -570,7 +551,7 @@ class ProtocolsManager {
                         return;
                     }
                     
-                    const isProtected = ageGroup.protected || false;
+                    const isProtected = (ageGroup.protected === true) || (Array.isArray(ageGroup.participants) && ageGroup.participants.length > 0 && this.isFinishProtocolComplete(ageGroup));
                     const isFinishComplete = type === 'finish' && this.isFinishProtocolComplete(ageGroup);
                     const protectedClass = isProtected ? 'protected-protocol' : '';
                     const completedClass = isFinishComplete ? 'completed-finish-protocol' : '';
@@ -578,12 +559,8 @@ class ProtocolsManager {
                     
                     html += `<div class="age-group mb-3">`;
                     html += `<div class="d-flex justify-content-between align-items-center mb-2">`;
-                    // Форматируем название группы для отображения
+                    // Отображаем полное название возрастной группы как есть (например: "группа 1: 18-29")
                     let displayGroupName = ageGroup.name;
-                    if (displayGroupName.includes(': ')) {
-                        // Заменяем ": " на " " для более читаемого отображения
-                        displayGroupName = displayGroupName.replace(': ', ' ');
-                    }
                     html += `<h6 class="age-title">Протокол №${ageGroup.protocol_number} - ${displayGroupName}</h6>`;
                     if (isProtected) {
                         html += `<span class="badge bg-success"><i class="fas fa-shield-alt"></i> Защищен</span>`;
@@ -593,73 +570,188 @@ class ProtocolsManager {
                     }
                     html += `</div>`;
                     
-                    html += `<div class="table-responsive">`;
-                    html += `<table class="table table-sm table-bordered protocol-table ${combinedClass}" data-group="${ageGroup.redisKey}" data-type="${type}">`;
-                    html += `<thead class="table-light">`;
-                    html += `<tr>`;
-                    
-                    // Заголовки в зависимости от типа протокола
-                    if (type === 'start') {
-                        html += `<th>Вода</th>`;
-                        html += `<th>Номер спортсмена</th>`;
-                        html += `<th>ФИО</th>`;
-                        html += `<th>Дата рождения</th>`;
-                        html += `<th>Спортивный разряд</th>`;
-                        if (protocol.discipline === 'D-10') {
-                            html += `<th>Город команды</th>`;
-                            html += `<th>Название команды</th>`;
-                        }
-                    } else {
-                        html += `<th>Место</th>`;
-                        html += `<th>Время финиша</th>`;
-                        html += `<th>Вода</th>`;
-                        html += `<th>Номер спортсмена</th>`;
-                        html += `<th>ФИО</th>`;
-                        html += `<th>Дата рождения</th>`;
-                        html += `<th>Спортивный разряд</th>`;
-                        if (protocol.discipline === 'D-10') {
-                            html += `<th>Город команды</th>`;
-                            html += `<th>Название команды</th>`;
-                        }
-                    }
-                    
-                    html += `<th>Действия</th>`;
-                    html += `</tr>`;
-                    html += `</thead>`;
-                    html += `<tbody>`;
-                    
+                    // Если есть участники — рисуем одну или несколько таблиц с учетом лимита вод
                     if (ageGroup.participants && ageGroup.participants.length > 0) {
-                        ageGroup.participants.forEach(participant => {
-                            html += this.generateParticipantRow(participant, type, protocol.discipline, ageGroup.redisKey);
-                        });
+                        if (protocol.discipline === 'D-10') {
+                            // Группируем участников по командам (одна команда = одна "вода")
+                            const teamsMap = new Map();
+                            for (const p of ageGroup.participants) {
+                                const tId = p.teamId || p.team_id || `${p.teamCity || ''}|${p.teamName || ''}`;
+                                if (!teamsMap.has(tId)) {
+                                    teamsMap.set(tId, {
+                                        teamId: tId,
+                                        teamName: p.teamName || p.teamname || '-',
+                                        teamCity: p.teamCity || p.teamcity || '-',
+                                        participants: [],
+                                        lane: p.lane || p.water || '',
+                                        water: p.water || p.lane || '',
+                                        place: p.place || '',
+                                        finishTime: p.finishTime || '',
+                                        // Если у участника нет метки возрастной группы команды,
+                                        // используем метку текущей возрастной группы ageGroup.name
+                                        teamAgeGroupLabel: p.teamAgeGroupLabel || p.ageGroupLabel || ageGroup.teamAgeGroupLabel || ageGroup.name || ''
+                                    });
+                                }
+                                const teamObj = teamsMap.get(tId);
+                                teamObj.participants.push(p);
+                                // Обновляем label, если у следующего участника появилась более точная метка
+                                if (!teamObj.teamAgeGroupLabel && (p.teamAgeGroupLabel || p.ageGroupLabel)) {
+                                    teamObj.teamAgeGroupLabel = p.teamAgeGroupLabel || p.ageGroupLabel;
+                                }
+                            }
+
+                            const teamsArray = Array.from(teamsMap.values());
+                            const maxPerTable = this.getMaxLanesForBoat('D-10');
+                            const teamChunks = this.splitIntoEvenChunks(teamsArray, maxPerTable);
+                            let teamIndex = 0;
+                            teamChunks.forEach((chunkTeams) => {
+                                // Шапка таблицы (для D-10 фиксированная согласно требованиям)
+                                html += `<div class="table-responsive">`;
+                                html += `<table class="table table-sm table-bordered protocol-table ${combinedClass}" data-group="${ageGroup.redisKey}" data-type="${type}">`;
+                                html += `<thead class="table-light">`;
+                                html += `<tr>`;
+                                if (type === 'start') {
+                                    // Стартовые протоколы D-10: без столбцов "Место" и "Время финиша"
+                                    html += `<th style=\"width:8%\">Вода</th>`;
+                                    html += `<th style=\"width:28%\">Название<br>команды</th>`;
+                                    html += `<th style=\"width:20%\">Город<br>команды</th>`;
+                                    html += `<th style=\"width:16%\">Возрастная<br>группа<br>команды</th>`;
+                                    html += `<th style=\"width:8%\">Действия</th>`;
+                                } else {
+                                    html += `<th style=\"width:8%\">Место</th>`;
+                                    html += `<th style=\"width:12%\">Время<br>финиша</th>`;
+                                    html += `<th style=\"width:8%\">Вода</th>`;
+                                    html += `<th style=\"width:28%\">Название<br>команды</th>`;
+                                    html += `<th style=\"width:20%\">Город<br>команды</th>`;
+                                    html += `<th style=\"width:16%\">Возрастная<br>группа<br>команды</th>`;
+                                    html += `<th style=\"width:8%\">Действия</th>`;
+                                }
+                                html += `</tr>`;
+                                html += `</thead>`;
+                                html += `<tbody>`;
+
+                                for (const team of chunkTeams) {
+                                    const collapseId = `${ageGroup.redisKey.replace(/[^a-zA-Z0-9_-]/g, '_')}_team_${teamIndex++}`;
+                                    // Для стартовых протоколов не показываем колонки места и времени финиша
+                                    html += this.generateTeamRow(team, type, protocol.discipline, ageGroup.redisKey, collapseId);
+                                    const headerColspan = (type === 'start') ? 5 : 7;
+                                    html += `<tr class="collapse" id="${collapseId}"><td colspan="${headerColspan}">`;
+                                    html += `<div class="table-responsive"><table class="table table-sm mb-0"><thead><tr>`;
+                                    html += `<th style="width:18%">Номер спортсмена</th><th style="width:36%">ФИО</th><th style="width:18%">Дата рождения</th><th style="width:20%">Возрастная группа</th><th style="width:8%">Разряд</th>`;
+                                    html += `</tr></thead><tbody>`;
+                                    for (const member of team.participants) {
+                                        html += `<tr>`;
+                                        html += `<td>${member.userid || member.userId || '-'}</td>`;
+                                        html += `<td>${member.fio}</td>`;
+                                        html += `<td>${this.formatBirthDate(member.birthdata)}</td>`;
+                                        html += `<td>${member.ageGroupLabel || ''}</td>`;
+                                        html += `<td>${member.sportzvanie || ''}</td>`;
+                                        html += `</tr>`;
+                                    }
+                                    html += `</tbody></table></div>`;
+                                    html += `</td></tr>`;
+                                }
+
+                                html += `</tbody>`;
+                                html += `</table>`;
+                                html += `</div>`;
+                            });
+                        } else {
+                            const maxPerTable = this.getMaxLanesForBoat(protocol.discipline);
+                            const participantChunks = this.splitIntoEvenChunks(ageGroup.participants, maxPerTable);
+                            participantChunks.forEach((chunkParticipants) => {
+                                html += `<div class="table-responsive">`;
+                                html += `<table class="table table-sm table-bordered protocol-table ${combinedClass}" data-group="${ageGroup.redisKey}" data-type="${type}">`;
+                                html += `<thead class="table-light">`;
+                                html += `<tr>`;
+                                if (type === 'start') {
+                                    html += `<th style=\"width:10%\">Вода</th>`;
+                                    html += `<th style=\"width:14%\">Номер<br>спортсмена</th>`;
+                                    html += `<th style="width:36%">ФИО</th>`;
+                                    html += `<th style=\"width:20%\">Дата<br>рождения</th>`;
+                                    html += `<th style=\"width:12%\">Спортивный<br>разряд</th>`;
+                                } else {
+                                    html += `<th style="width:8%">Место</th>`;
+                                    html += `<th style=\"width:10%\">Время<br>финиша</th>`;
+                                    html += `<th style=\"width:8%\">Вода</th>`;
+                                    html += `<th style=\"width:13%\">Номер<br>спортсмена</th>`;
+                                    html += `<th style="width:31%">ФИО</th>`;
+                                    html += `<th style=\"width:11%\">Дата<br>рождения</th>`;
+                                    html += `<th style=\"width:14%\">Спортивный<br>разряд</th>`;
+                                }
+                                html += `<th>Действия</th>`;
+                                html += `</tr>`;
+                                html += `</thead>`;
+                                html += `<tbody>`;
+
+                                chunkParticipants.forEach(participant => {
+                                    html += this.generateParticipantRow(participant, type, protocol.discipline, ageGroup.redisKey);
+                                });
+
+                                html += `</tbody>`;
+                                html += `</table>`;
+                                html += `</div>`;
+                            });
+                        }
                     } else {
-                        // Правильный расчет количества столбцов для colspan
-                        let colCount = 0;
-                        
-                        if (type === 'start') {
-                            // Стартовые протоколы: Вода, Номер спортсмена, ФИО, Дата рождения, Спортивный разряд
-                            colCount = 5;
-                            if (protocol.discipline === 'D-10') {
-                                // Дополнительные столбцы для драконов: Город команды, Название команды
-                                colCount += 2;
+                        // Пустая группа: рисуем одну пустую таблицу
+                        html += `<div class="table-responsive">`;
+                        html += `<table class="table table-sm table-bordered protocol-table ${combinedClass}" data-group="${ageGroup.redisKey}" data-type="${type}">`;
+                        html += `<thead class="table-light">`;
+                        html += `<tr>`;
+                        if (protocol.discipline === 'D-10') {
+                            // Специальная шапка для D-10
+                            if (type === 'start') {
+                                html += `<th style=\"width:8%\">Вода</th>`;
+                                html += `<th style=\"width:28%\">Название<br>команды</th>`;
+                                html += `<th style=\"width:20%\">Город<br>команды</th>`;
+                                html += `<th style=\"width:16%\">Возрастная<br>группа<br>команды</th>`;
+                                html += `<th style=\"width:8%\">Действия</th>`;
+                            } else {
+                                html += `<th style=\"width:8%\">Место</th>`;
+                                html += `<th style=\"width:12%\">Время<br>финиша</th>`;
+                                html += `<th style=\"width:8%\">Вода</th>`;
+                                html += `<th style=\"width:28%\">Название<br>команды</th>`;
+                                html += `<th style=\"width:20%\">Город<br>команды</th>`;
+                                html += `<th style=\"width:16%\">Возрастная<br>группа<br>команды</th>`;
+                                html += `<th style=\"width:8%\">Действия</th>`;
                             }
                         } else {
-                            // Финишные протоколы: Место, Время финиша, Вода, Номер спортсмена, ФИО, Дата рождения, Спортивный разряд
-                            colCount = 7;
-                            if (protocol.discipline === 'D-10') {
-                                // Дополнительные столбцы для драконов: Город команды, Название команды
-                                colCount += 2;
+                            if (type === 'start') {
+                                html += `<th style=\"width:10%\">Вода</th>`;
+                                html += `<th style=\"width:14%\">Номер<br>спортсмена</th>`;
+                                html += `<th style=\"width:36%\">ФИО</th>`;
+                                html += `<th style=\"width:20%\">Дата<br>рождения</th>`;
+                                html += `<th style=\"width:12%\">Спортивный<br>разряд</th>`;
+                                html += `<th>Действия</th>`;
+                            } else {
+                                html += `<th style=\"width:8%\">Место</th>`;
+                                html += `<th style=\"width:10%\">Время<br>финиша</th>`;
+                                html += `<th style=\"width:8%\">Вода</th>`;
+                                html += `<th style=\"width:13%\">Номер<br>спортсмена</th>`;
+                                html += `<th style=\"width:31%\">ФИО</th>`;
+                                html += `<th style=\"width:11%\">Дата<br>рождения</th>`;
+                                html += `<th style=\"width:14%\">Спортивный<br>разряд</th>`;
+                                html += `<th>Действия</th>`;
                             }
                         }
-                        
-                        // Добавляем столбец "Действия"
-                        colCount += 1;
-                        
+                        html += `</tr>`;
+                        html += `</thead>`;
+                        html += `<tbody>`;
+
+                        // Правильный расчет количества столбцов для colspan
+                        let colCount;
+                        if (protocol.discipline === 'D-10') {
+                            colCount = (type === 'start') ? 5 : 7; // Для стартовых без Места и Времени
+                        } else {
+                            colCount = (type === 'start') ? 6 : 8; // включая Действия
+                        }
                         html += `<tr><td colspan="${colCount}" class="text-center text-muted">Нет участников</td></tr>`;
+
+                        html += `</tbody>`;
+                        html += `</table>`;
+                        html += `</div>`;
                     }
-                    
-                    html += `</tbody>`;
-                    html += `</table>`;
                     
                     // Кнопки добавления участника и скачивания протокола на одной строке
                     if (type === 'start') {
@@ -706,6 +798,112 @@ class ProtocolsManager {
         return html;
     }
 
+    // Хелпер: максимальное количество дорожек по типу лодки
+    getMaxLanesForBoat(boatClass) {
+        switch (boatClass) {
+            case 'D-10':
+        return 6;
+            default:
+                return 10;
+        }
+    }
+
+    // Хелпер: равномерное разбиение массива на части по максимуму в части
+    splitIntoEvenChunks(items, maxPerChunk) {
+        const arr = Array.from(items || []);
+        if (arr.length === 0) return [];
+        if (arr.length <= maxPerChunk) return [arr];
+        const numChunks = Math.ceil(arr.length / maxPerChunk);
+        const base = Math.floor(arr.length / numChunks);
+        const remainder = arr.length % numChunks;
+        const chunks = [];
+        let index = 0;
+        for (let i = 0; i < numChunks; i++) {
+            const size = base + (i < remainder ? 1 : 0);
+            chunks.push(arr.slice(index, index + size));
+            index += size;
+        }
+        return chunks;
+    }
+
+    // Генерация строки команды для D-10
+    generateTeamRow(team, type, boatClass, groupKey, collapseId) {
+        let html = '<tr class="participant-row">';
+        const maxLanes = this.getMaxLanesForBoat(boatClass);
+        if (type === 'start') {
+            // В стартовых протоколах не показываем "Место" и "Время финиша"
+            html += `<td><input type=\"number\" class=\"form-control form-control-sm\" value=\"${team.lane || team.water || ''}\" data-original-lane=\"${team.lane || team.water || ''}\" onchange=\"protocolsManager.updateTeamLane(this, '${groupKey}', '${team.teamId}', '${boatClass}')\" min=\"1\" max=\"${maxLanes}\"></td>`;
+            html += `<td class=\"fw-semibold\">${team.teamName || '-'}</td>`;
+            html += `<td>${team.teamCity || '-'}</td>`;
+            html += `<td>${team.teamAgeGroupLabel || ''}</td>`;
+            html += `<td>`;
+            html += `<button class=\"btn btn-sm btn-outline-secondary\" data-bs-toggle=\"collapse\" data-bs-target=\"#${collapseId}\"><i class=\"fas fa-users\"></i></button>`;
+            html += `</td>`;
+        } else {
+            // Финишные протоколы с "Место" и "Время финиша"
+            html += `<td class=\"edit-field\" data-field=\"place\" data-participant-id=\"team:${team.teamId}\">${team.place || ''}</td>`;
+            html += `<td class=\"edit-field\" data-field=\"finishTime\" data-participant-id=\"team:${team.teamId}\">${team.finishTime || ''}</td>`;
+            html += `<td><input type=\"number\" class=\"form-control form-control-sm\" value=\"${team.lane || team.water || ''}\" data-original-lane=\"${team.lane || team.water || ''}\" onchange=\"protocolsManager.updateTeamLane(this, '${groupKey}', '${team.teamId}', '${boatClass}')\" min=\"1\" max=\"${maxLanes}\"></td>`;
+            html += `<td class=\"fw-semibold\">${team.teamName || '-'}</td>`;
+            html += `<td>${team.teamCity || '-'}</td>`;
+            html += `<td>${team.teamAgeGroupLabel || ''}</td>`;
+            html += `<td>`;
+            html += `<button class=\"btn btn-sm btn-outline-secondary\" data-bs-toggle=\"collapse\" data-bs-target=\"#${collapseId}\"><i class=\"fas fa-users\"></i></button>`;
+            html += `</td>`;
+        }
+        html += `</tr>`;
+        return html;
+    }
+
+    // Обновление дорожки команды: назначает lane/water всем участникам команды
+    async updateTeamLane(input, groupKey, teamId, boatClass) {
+        const newLane = parseInt(input.value);
+        const originalLane = parseInt(input.dataset.originalLane || 0);
+        const maxLanes = this.getMaxLanesForBoat(boatClass);
+        if (isNaN(newLane) || newLane < 1 || newLane > maxLanes) {
+            this.showNotification(`Номер дорожки должен быть от 1 до ${maxLanes}`, 'error');
+            input.value = originalLane || '';
+            return;
+        }
+
+        try {
+            input.style.opacity = '0.7';
+            input.disabled = true;
+
+            // Локально обновляем все записи участников этой команды
+            for (const protocol of this.protocolsData) {
+                for (const ageGroup of protocol.ageGroups) {
+                    if (ageGroup.redisKey === groupKey && Array.isArray(ageGroup.participants)) {
+                        for (const p of ageGroup.participants) {
+                            const pTeamId = p.teamId || p.team_id || `${p.teamCity || ''}|${p.teamName || ''}`;
+                            if (String(pTeamId) === String(teamId)) {
+                                p.lane = newLane;
+                                p.water = newLane;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Отправляем на бэкенд обновление для всех участников команды
+            await fetch('/lks/php/secretary/update_team_lane.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ groupKey, teamId, lane: newLane })
+            });
+
+            input.dataset.originalLane = newLane;
+            this.renderProtocols();
+            this.showNotification('Дорожка назначена команде', 'success');
+        } catch (e) {
+            input.value = originalLane || '';
+            this.showNotification('Ошибка обновления дорожки команды', 'error');
+        } finally {
+            input.style.opacity = '1';
+            input.disabled = false;
+        }
+    }
+
     // Проверка заполненности финишного протокола
     isFinishProtocolComplete(ageGroup) {
         if (!ageGroup.participants || ageGroup.participants.length === 0) {
@@ -717,6 +915,44 @@ class ProtocolsManager {
             return participant.place && participant.place !== '' && 
                    participant.finishTime && participant.finishTime !== '';
         });
+    }
+
+    // Форматирование даты рождения в вид dd-mm-yyyy
+    formatBirthDate(dateValue) {
+        if (!dateValue) return '';
+        try {
+            const raw = String(dateValue).trim();
+            // Разбиваем по любому нецифровому разделителю
+            const parts = raw.split(/[^0-9]/).filter(Boolean);
+            let d, m, y;
+            if (parts.length >= 3) {
+                if (parts[0].length === 4) {
+                    // yyyy-mm-dd
+                    [y, m, d] = [parts[0], parts[1], parts[2]];
+                } else if (parts[2].length === 4) {
+                    // dd.mm.yyyy
+                    [d, m, y] = [parts[0], parts[1], parts[2]];
+                } else {
+                    // fallback: берём первые три как d m y
+                    [d, m, y] = [parts[0], parts[1], parts[2]];
+                }
+                const dd = String(d).padStart(2, '0');
+                const mm = String(m).padStart(2, '0');
+                const yyyy = String(y).padStart(4, '0');
+                return `${dd}-${mm}-${yyyy}`;
+            }
+            // Если не распознали, пытаемся через Date
+            const dt = new Date(raw);
+            if (!isNaN(dt.getTime())) {
+                const dd = String(dt.getDate()).padStart(2, '0');
+                const mm = String(dt.getMonth() + 1).padStart(2, '0');
+                const yyyy = String(dt.getFullYear());
+                return `${dd}-${mm}-${yyyy}`;
+            }
+            return raw;
+        } catch (e) {
+            return String(dateValue);
+        }
     }
 
     // Скачивание протокола
@@ -986,26 +1222,32 @@ class ProtocolsManager {
         let html = '<tr class="participant-row">';
         
         if (type === 'start') {
-            html += `<td><input type="number" class="form-control form-control-sm" value="${participant.lane || participant.water || ''}" data-original-lane="${participant.lane || participant.water || ''}" onchange="protocolsManager.updateLane(this, ${participant.userid || participant.userId}, '${groupKey}')" min="1" max="8"></td>`;
+            const maxLanes = this.getMaxLanesForBoat(boatClass);
+            html += `<td><input type="number" class="form-control form-control-sm" value="${participant.lane || participant.water || ''}" data-original-lane="${participant.lane || participant.water || ''}" onchange="protocolsManager.updateLane(this, ${participant.userid || participant.userId}, '${groupKey}')" min="1" max="${maxLanes}"></td>`;
             html += `<td>${participant.userid || participant.userId || '-'}</td>`;
             html += `<td class="edit-field" data-field="fio" data-participant-id="${participant.userid || participant.userId}">${participant.fio}</td>`;
-            html += `<td>${participant.birthdata}</td>`;
+            html += `<td>${this.formatBirthDate(participant.birthdata)}</td>`;
             html += `<td class="edit-field" data-field="sportzvanie" data-participant-id="${participant.userid || participant.userId}">${participant.sportzvanie}</td>`;
             if (boatClass === 'D-10') {
-                html += `<td class="edit-field" data-field="teamcity" data-participant-id="${participant.userid || participant.userId}">${participant.teamcity || '-'}</td>`;
-                html += `<td class="edit-field" data-field="teamname" data-participant-id="${participant.userid || participant.userId}">${participant.teamname || '-'}</td>`;
+                const teamCityVal = (participant.teamcity || participant.teamCity || '-');
+                const teamNameVal = (participant.teamname || participant.teamName || '-');
+                html += `<td class="edit-field" data-field="teamcity" data-participant-id="${participant.userid || participant.userId}">${teamCityVal}</td>`;
+                html += `<td class="edit-field" data-field="teamname" data-participant-id="${participant.userid || participant.userId}">${teamNameVal}</td>`;
             }
         } else {
             html += `<td class="edit-field" data-field="place" data-participant-id="${participant.userid || participant.userId}">${participant.place || ''}</td>`;
             html += `<td class="edit-field" data-field="finishTime" data-participant-id="${participant.userid || participant.userId}">${participant.finishTime || ''}</td>`;
-            html += `<td><input type="number" class="form-control form-control-sm" value="${participant.lane || participant.water || ''}" data-original-lane="${participant.lane || participant.water || ''}" onchange="protocolsManager.updateLane(this, ${participant.userid || participant.userId}, '${groupKey}')" min="1" max="8"></td>`;
+            const maxLanes = this.getMaxLanesForBoat(boatClass);
+            html += `<td><input type="number" class="form-control form-control-sm" value="${participant.lane || participant.water || ''}" data-original-lane="${participant.lane || participant.water || ''}" onchange="protocolsManager.updateLane(this, ${participant.userid || participant.userId}, '${groupKey}')" min="1" max="${maxLanes}"></td>`;
             html += `<td>${participant.userid || participant.userId || '-'}</td>`;
             html += `<td>${participant.fio}</td>`;
-            html += `<td>${participant.birthdata}</td>`;
+            html += `<td>${this.formatBirthDate(participant.birthdata)}</td>`;
             html += `<td>${participant.sportzvanie}</td>`;
             if (boatClass === 'D-10') {
-                html += `<td>${participant.teamcity || '-'}</td>`;
-                html += `<td>${participant.teamname || '-'}</td>`;
+                const teamCityVal = (participant.teamcity || participant.teamCity || '-');
+                const teamNameVal = (participant.teamname || participant.teamName || '-');
+                html += `<td>${teamCityVal}</td>`;
+                html += `<td>${teamNameVal}</td>`;
             }
         }
         
@@ -1047,6 +1289,52 @@ class ProtocolsManager {
         const participantId = element.dataset.participantId;
         const groupKey = element.closest('table').dataset.group;
         
+        // Обработка группового (командного) редактирования для D-10
+        if (participantId && String(participantId).startsWith('team:')) {
+            const teamId = String(participantId).slice(5);
+            try {
+                const resp = await fetch('/lks/php/secretary/update_team_field.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        meroId: this.currentMeroId,
+                        groupKey: groupKey,
+                        teamId: teamId,
+                        field: field,
+                        value: newValue
+                    })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    // Обновляем в памяти всем участникам команды
+                    for (const protocol of this.protocolsData) {
+                        for (const ageGroup of protocol.ageGroups) {
+                            if (ageGroup.redisKey === groupKey && Array.isArray(ageGroup.participants)) {
+                                for (const p of ageGroup.participants) {
+                                    const pTeamId = p.teamId || p.team_id || `${p.teamCity || ''}|${p.teamName || ''}`;
+                                    if (String(pTeamId) === String(teamId)) {
+                                        p[field] = newValue;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    this.showNotification('Данные команды сохранены', 'success');
+                    return;
+                } else {
+                    this.showNotification('Ошибка сохранения: ' + (data.message || ''), 'error');
+                    element.blur();
+                    return;
+                }
+            } catch (e) {
+                this.showNotification('Ошибка сохранения данных команды', 'error');
+                return;
+            } finally {
+                element.classList.remove('editing');
+                element.contentEditable = false;
+            }
+        }
+
         // Проверяем, что participantId не undefined
         if (!participantId || participantId === 'undefined') {
             this.showNotification('Ошибка: не удалось определить участника', 'error');
@@ -1446,8 +1734,16 @@ class ProtocolsManager {
         const newLane = parseInt(input.value);
         const originalLane = parseInt(input.dataset.originalLane || 0);
         
-        // Проверяем валидность номера дорожки
-        const maxLanes = 8; // Максимальное количество дорожек
+        // Проверяем валидность номера дорожки (лимит вод зависит от типа лодки)
+        // Определяем дисциплину по groupKey: protocol:meroId:class:sex:dist:age
+        let maxLanes = 10;
+        try {
+            const parts = String(groupKey).split(':');
+            const boatClass = parts[2] || '';
+            maxLanes = this.getMaxLanesForBoat(boatClass);
+        } catch (e) {
+            maxLanes = 10;
+        }
         if (newLane < 1 || newLane > maxLanes) {
             this.showNotification(`Номер дорожки должен быть от 1 до ${maxLanes}`, 'error');
             input.value = originalLane;

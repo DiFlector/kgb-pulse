@@ -102,7 +102,7 @@ try {
     // Удаляем файлы положения, если они есть
     if (!empty($event['filepolojenie'])) {
         try {
-            $filePath = $_SERVER['DOCUMENT_ROOT'] . $event['filepolojenie'];
+            $filePath = dirname(__DIR__, 2) . '/' . ltrim($event['filepolojenie'], '/');
             if (file_exists($filePath)) {
                 unlink($filePath);
                 error_log("Файл положения удален: " . $filePath);

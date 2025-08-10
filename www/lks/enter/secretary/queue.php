@@ -10,54 +10,24 @@ if (!$auth->isAuthenticated() || !in_array($auth->getUserRole(), ['Secretary', '
 $userRole = $auth->getUserRole();
 $currentUser = $auth->getCurrentUser();
 $userName = $currentUser['fio'] ?? 'Пользователь';
+
+$pageTitle = 'Очередь спортсменов - Панель секретаря';
+$pageHeader = 'Очередь спортсменов';
+$pageIcon = 'fas fa-clock';
+
+// Дополнительные стили для этой страницы
+$additionalCSS = [
+    '/lks/css/style-clean.css'
+];
+
+include '../includes/header.php'; 
 ?>
 
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Очередь спортсменов - Панель секретаря</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="../../css/style.css" rel="stylesheet">
-    <style>
-        .team-card {
-            border-left: 4px solid #dc3545;
-            background: #fff8f8;
-        }
-        .queue-card {
-            border-left: 4px solid #ffc107;
-            background: #fffbf0;
-        }
-        .participant-row {
-            border-bottom: 1px solid #eee;
-            padding: 10px 0;
-        }
-        .participant-row:last-child {
-            border-bottom: none;
-        }
-        .role-badge {
-            font-size: 0.75rem;
-        }
-        .loading-spinner {
-            display: none;
-        }
-    </style>
-</head>
-<body>
-    <?php include '../includes/header.php'; ?>
-
     <!-- Основной контент -->
-    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-        <h1 class="h2">
-            <i class="fas fa-clock me-2"></i>Очередь спортсменов
-        </h1>
-        <div class="btn-toolbar mb-2 mb-md-0">
-            <button type="button" class="btn btn-primary" onclick="refreshData()">
-                <i class="fas fa-sync-alt"></i> Обновить
-            </button>
-        </div>
+    <div class="d-flex justify-content-end mb-3">
+        <button type="button" class="btn btn-primary" onclick="refreshData()">
+            <i class="fas fa-sync-alt"></i> Обновить
+        </button>
     </div>
 
     <!-- Фильтры и поиск -->
@@ -105,7 +75,7 @@ $userName = $currentUser['fio'] ?? 'Пользователь';
         <div class="col-md-6">
             <div class="card text-center">
                 <div class="card-body">
-                    <h5 class="card-title text-warning">В очереди</h5>
+                    <h5 class="card-title text-warning">Ожидают</h5>
                     <h2 class="text-warning" id="queue-count">0</h2>
                     <p class="card-text">спортсменов ожидают</p>
                 </div>
@@ -152,8 +122,29 @@ $userName = $currentUser['fio'] ?? 'Пользователь';
         Очередь пуста! Все спортсмены распределены.
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="../../js/libs/jquery/jquery-3.7.1.min.js"></script>
+    <style>
+        .team-card {
+            border-left: 4px solid #dc3545;
+            background: #fff8f8;
+        }
+        .queue-card {
+            border-left: 4px solid #ffc107;
+            background: #fffbf0;
+        }
+        .participant-row {
+            border-bottom: 1px solid #eee;
+            padding: 10px 0;
+        }
+        .participant-row:last-child {
+            border-bottom: none;
+        }
+        .role-badge {
+            font-size: 0.75rem;
+        }
+        .loading-spinner {
+            display: none;
+        }
+    </style>
     <script>
         let allQueueData = {}; // Хранилище всех данных для фильтрации
         
@@ -166,12 +157,12 @@ $userName = $currentUser['fio'] ?? 'Пользователь';
             $('#statistics, #queue-section, #teams-section, #no-data').hide();
 
             $.ajax({
-                url: '../../php/common/get_queue.php',
+                url: '../../php/secretary/get_queue.php',
                 method: 'GET',
                 dataType: 'json',
                 success: function(response) {
                     if (response.success) {
-                        allQueueData = response.data; // Сохраняем данные для фильтрации
+                        allQueueData = response.queue; // Используем правильное поле из ответа
                         populateEventFilter(allQueueData);
                         displayQueueData(allQueueData);
                     } else {
@@ -186,23 +177,89 @@ $userName = $currentUser['fio'] ?? 'Пользователь';
                 }
             });
         }
+        
+        function refreshData() {
+            loadQueueData();
+        }
+
+        // Заполнение фильтра мероприятий
+        function populateEventFilter(data) {
+            const eventFilter = document.getElementById('eventFilter');
+            const events = new Set();
+            
+            // Собираем уникальные мероприятия
+            if (data && Array.isArray(data)) {
+                data.forEach(p => {
+                    if (p.meroname) events.add(p.meroname);
+                });
+            }
+            
+            // Очищаем и заполняем select
+            eventFilter.innerHTML = '<option value="">Все мероприятия</option>';
+            Array.from(events).sort().forEach(event => {
+                const option = document.createElement('option');
+                option.value = event;
+                option.textContent = event;
+                eventFilter.appendChild(option);
+            });
+        }
+
+        // Фильтрация и сортировка данных
+        function filterData() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const eventFilter = document.getElementById('eventFilter').value;
+            const sortBy = document.getElementById('sortFilter').value;
+            
+            let filteredData = JSON.parse(JSON.stringify(allQueueData)); // Глубокая копия
+            
+            // Фильтрация участников очереди
+            if (filteredData && Array.isArray(filteredData)) {
+                filteredData = filteredData.filter(participant => {
+                    const matchesSearch = !searchTerm || 
+                        (participant.fio && participant.fio.toLowerCase().includes(searchTerm)) ||
+                        (participant.userid && participant.userid.toString().includes(searchTerm));
+                    
+                    const matchesEvent = !eventFilter || 
+                        (participant.meroname && participant.meroname === eventFilter);
+                    
+                    return matchesSearch && matchesEvent;
+                });
+                
+                // Сортировка участников очереди
+                filteredData.sort((a, b) => {
+                    switch (sortBy) {
+                        case 'fio':
+                            return (a.fio || '').localeCompare(b.fio || '');
+                        case 'userid':
+                            return (a.userid || 0) - (b.userid || 0);
+                        case 'status':
+                            return (a.status || '').localeCompare(b.status || '');
+                        case 'oplata':
+                            return (b.oplata || false) - (a.oplata || false);
+                        case 'event':
+                            return (a.meroname || '').localeCompare(b.meroname || '');
+                        default:
+                            return 0;
+                    }
+                });
+            }
+            
+            displayQueueData(filteredData);
+        }
 
         function displayQueueData(data) {
-            const queueParticipants = data.queue_participants || [];
-            const incompleteTeams = data.incomplete_teams || [];
-
+            // Обрабатываем данные из API секретаря
+            const queueParticipants = data || [];
+            
             // Подсчитываем общее количество ожидающих участников
             let totalWaiting = queueParticipants.length;
-            incompleteTeams.forEach(team => {
-                totalWaiting += team.participants.length;
-            });
-
+            
             // Обновляем статистику
             $('#queue-count').text(totalWaiting);
-            $('#incomplete-count').text(incompleteTeams.length);
+            $('#incomplete-count').text('0'); // Пока не реализовано для команд
             $('#statistics').show();
 
-            if (queueParticipants.length === 0 && incompleteTeams.length === 0) {
+            if (queueParticipants.length === 0) {
                 $('#no-data').show();
                 return;
             }
@@ -215,17 +272,25 @@ $userName = $currentUser['fio'] ?? 'Пользователь';
                 $('#queue-section').hide();
             }
 
-            // Отображаем неполные команды
-            if (incompleteTeams.length > 0) {
-                displayIncompleteTeams(incompleteTeams);
-                $('#teams-section').show();
-            } else {
-                $('#teams-section').hide();
-            }
+            // Скрываем секцию команд пока не реализовано
+            $('#teams-section').hide();
         }
 
         function displayQueueParticipants(participants) {
-            let html = '';
+            let html = `
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th width="25%">Участник</th>
+                                <th width="20%">Мероприятие</th>
+                                <th width="15%">Статус</th>
+                                <th width="25%">Дисциплины</th>
+                                <th width="15%">Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
             
             participants.forEach(function(participant) {
                 const disciplinesHtml = formatDisciplines(participant.discipline);
@@ -233,63 +298,61 @@ $userName = $currentUser['fio'] ?? 'Пользователь';
                 const statusClass = getStatusClass(participant.status);
 
                 html += `
-                    <div class="participant-row">
-                        <div class="row align-items-center">
-                            <div class="col-md-4">
-                                <strong>${participant.fio}</strong>
-                                <br><small class="text-primary">Спортсмен №${participant.userid || 'Не указан'}</small>
-                                <br><small class="text-muted">${participant.email}</small>
-                                <br><small class="text-muted">${participant.telephone || ''}</small>
+                    <tr>
+                        <td>
+                            <strong>${participant.fio}</strong>
+                            <br><small class="text-primary">Спортсмен №${participant.userid || 'Не указан'}</small>
+                            <br><small class="text-muted">${participant.email}</small>
+                            <br><small class="text-muted">${participant.telephone || ''}</small>
+                        </td>
+                        <td>
+                            <span class="text-info">${participant.meroname || 'Не указано'}</span>
+                        </td>
+                        <td>
+                            <span class="badge ${statusClass}">${participant.status}</span>
+                            <br><span title="${participant.oplata ? 'Оплачено' : 'Не оплачено'}">${paymentIcon}</span>
+                            <small class="text-muted d-block">${participant.cost || 0} ₽</small>
+                        </td>
+                        <td>
+                            <div class="disciplines-info">
+                                ${disciplinesHtml}
                             </div>
-                            <div class="col-md-3">
-                                <strong>Мероприятие:</strong><br>
-                                <span class="text-info">${participant.meroname || 'Не указано'}</span>
+                        </td>
+                        <td>
+                            <div class="btn-group-vertical btn-group-sm">
+                                <button class="btn btn-primary btn-sm mb-1" onclick="editRegistration(${participant.oid})" 
+                                        title="Редактировать регистрацию">
+                                    <i class="fas fa-edit"></i> Редактировать
+                                </button>
+                                ${participant.status === 'Подтверждён' ? 
+                                    `<button class="btn btn-success btn-sm mb-1" onclick="confirmParticipant(${participant.oid})" 
+                                            title="Подтвердить участие">
+                                        <i class="fas fa-check"></i> Зарегистрировать
+                                    </button>` : 
+                                    `<button class="btn btn-outline-success btn-sm mb-1" disabled title="Уже зарегистрирован">
+                                        <i class="fas fa-check"></i> Зарегистрирован
+                                    </button>`
+                                }
+                                ${!participant.oplata ? 
+                                    `<button class="btn btn-warning btn-sm" onclick="confirmPayment(${participant.oid})" 
+                                            title="Подтвердить оплату">
+                                        <i class="fas fa-dollar-sign"></i> Оплата
+                                    </button>` : 
+                                    `<button class="btn btn-outline-warning btn-sm" disabled title="Уже оплачено">
+                                        <i class="fas fa-dollar-sign"></i> Оплачено
+                                    </button>`
+                                }
                             </div>
-                            <div class="col-md-2">
-                                <span class="badge ${statusClass}">${participant.status}</span>
-                                <br><span title="${participant.oplata ? 'Оплачено' : 'Не оплачено'}">${paymentIcon}</span>
-                                <small class="text-muted d-block">${participant.cost || 0} ₽</small>
-                            </div>
-                            <div class="col-md-2">
-                                <div class="disciplines-info">
-                                    ${disciplinesHtml}
-                                </div>
-                            </div>
-                            <div class="col-md-2">
-                                <div class="btn-group-vertical btn-group-sm">
-                                    ${participant.status === 'Подтверждён' ? 
-                                        `<button class="btn btn-primary btn-sm mb-1" onclick="registerParticipant('${participant.oid}')" 
-                                                title="Зарегистрировать на месте">
-                                            <i class="fas fa-user-check"></i> Зарегистрировать
-                                        </button>` : 
-                                        `<button class="btn btn-outline-primary btn-sm mb-1" disabled title="Недоступно">
-                                            <i class="fas fa-user-check"></i> Недоступно
-                                        </button>`
-                                    }
-                                    ${participant.status === 'Зарегистрирован' ? 
-                                        `<button class="btn btn-warning btn-sm" onclick="disqualifyParticipant('${participant.oid}')" 
-                                                title="Дисквалифицировать">
-                                            <i class="fas fa-ban"></i> Дисквалифицировать
-                                        </button>` : 
-                                        `<button class="btn btn-outline-warning btn-sm" disabled title="Недоступно">
-                                            <i class="fas fa-ban"></i> Недоступно
-                                        </button>`
-                                    }
-                                    ${(participant.status !== 'Дисквалифицирован' && participant.status !== 'Зарегистрирован' && participant.status !== 'Неявка') ? 
-                                        `<button class="btn btn-danger btn-sm mt-1" onclick="markAsNoShow('${participant.oid}')" 
-                                                title="Отметить неявку">
-                                            <i class="fas fa-user-times"></i> Неявка
-                                        </button>` : 
-                                        `<button class="btn btn-outline-danger btn-sm mt-1" disabled title="Недоступно">
-                                            <i class="fas fa-user-times"></i> Недоступно
-                                        </button>`
-                                    }
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                        </td>
+                    </tr>
                 `;
             });
+            
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
             
             document.getElementById('queue-participants').innerHTML = html;
         }
@@ -297,13 +360,7 @@ $userName = $currentUser['fio'] ?? 'Пользователь';
         function displayIncompleteTeams(teams) {
             let html = '';
             
-            // Отладочная информация
-            console.log('Teams data:', teams);
-            
             teams.forEach(function(team) {
-                console.log('Team:', team);
-                console.log('team.teamid:', team.teamid);
-                console.log('team.champn:', team.champn);
                 
                 const reasonsHtml = team.reasons.map(reason => 
                     `<span class="badge bg-danger me-1">${reason}</span>`
@@ -323,40 +380,48 @@ $userName = $currentUser['fio'] ?? 'Пользователь';
                             </div>
                         </div>
                         <div class="card-body">
-                            <div class="row">
-                                <div class="col-12">
-                                    <h6>Участники команды (${team.participants.length}):</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-striped">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th width="25%">Участник</th>
+                                            <th width="25%">Дисциплины</th>
+                                            <th width="15%">Роль</th>
+                                            <th width="15%">Статус</th>
+                                            <th width="20%">Оплата</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
                 `;
 
                 team.participants.forEach(function(participant) {
                     const disciplinesHtml = formatDisciplines(participant.discipline);
 
                     html += `
-                        <div class="participant-row">
-                            <div class="row align-items-center">
-                                <div class="col-md-3">
-                                    <strong>${participant.fio}</strong>
-                                    <br><small class="text-muted">${participant.email}</small>
-                                </div>
-                                <div class="col-md-3">
-                                    ${disciplinesHtml}
-                                </div>
-                                <div class="col-md-2">
-                                    ${participant.role ? `<span class="badge bg-info role-badge">${translateRole(participant.role)}</span>` : ''}
-                                </div>
-                                <div class="col-md-2">
-                                    <span class="badge bg-${getStatusColor(participant.status)}">${participant.status}</span>
-                                </div>
-                                <div class="col-md-2">
-                                    ${participant.oplata ? '<span class="badge bg-success">Оплачено</span>' : '<span class="badge bg-danger">Не оплачено</span>'}
-                                </div>
-                            </div>
-                        </div>
+                        <tr>
+                            <td>
+                                <strong>${participant.fio}</strong>
+                                <br><small class="text-muted">${participant.email}</small>
+                            </td>
+                            <td>
+                                ${disciplinesHtml}
+                            </td>
+                            <td>
+                                ${participant.role ? `<span class="badge bg-info role-badge">${translateRole(participant.role)}</span>` : ''}
+                            </td>
+                            <td>
+                                <span class="badge bg-${getStatusColor(participant.status)}">${participant.status}</span>
+                            </td>
+                            <td>
+                                ${participant.oplata ? '<span class="badge bg-success">Оплачено</span>' : '<span class="badge bg-danger">Не оплачено</span>'}
+                            </td>
+                        </tr>
                     `;
                 });
 
                 html += `
-                                </div>
+                                    </tbody>
+                                </table>
                             </div>
                             <div class="card-footer text-end">
                                 ${team.isDragon ? `<a href="edit-team.php?team_id=${team.teamid}&champn=${team.champn}" class="btn btn-primary btn-sm">
@@ -364,9 +429,9 @@ $userName = $currentUser['fio'] ?? 'Пользователь';
                                 </a>` : ''}
                                 ${team.isComplete ? 
                                     `<button class="btn btn-success btn-sm ms-2" onclick="confirmTeam('${team.teamid}', '${team.champn}')" title="Подтвердить участие всей команды">
-                                        <i class="fas fa-check-circle"></i> Подтвердить команду
+                                        <i class="fas fa-check-circle"></i> Зарегистрировать команду
                                     </button>` : 
-                                    `<button class="btn btn-outline-success btn-sm ms-2" disabled title="Нельзя подтвердить команду - команда не полная">
+                                    `<button class="btn btn-outline-success btn-sm ms-2" disabled title="Нельзя зарегистрировать команду - команда не полная">
                                         <i class="fas fa-check-circle"></i> Команда не полная
                                     </button>`
                                 }
@@ -471,106 +536,14 @@ $userName = $currentUser['fio'] ?? 'Пользователь';
             }
         }
 
-        function refreshData() {
-            loadQueueData();
-        }
-
-        // Заполнение фильтра мероприятий
-        function populateEventFilter(data) {
-            const eventFilter = document.getElementById('eventFilter');
-            const events = new Set();
-            
-            // Собираем уникальные мероприятия
-            if (data.queue_participants) {
-                data.queue_participants.forEach(p => {
-                    if (p.meroname) events.add(p.meroname);
-                });
-            }
-            
-            if (data.incomplete_teams) {
-                data.incomplete_teams.forEach(team => {
-                    if (team.meroname) events.add(team.meroname);
-                });
-            }
-            
-            // Очищаем и заполняем select
-            eventFilter.innerHTML = '<option value="">Все мероприятия</option>';
-            Array.from(events).sort().forEach(event => {
-                const option = document.createElement('option');
-                option.value = event;
-                option.textContent = event;
-                eventFilter.appendChild(option);
-            });
-        }
-
-        // Фильтрация и сортировка данных
-        function filterData() {
-            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-            const eventFilter = document.getElementById('eventFilter').value;
-            const sortBy = document.getElementById('sortFilter').value;
-            
-            let filteredData = JSON.parse(JSON.stringify(allQueueData)); // Глубокая копия
-            
-            // Фильтрация участников очереди
-            if (filteredData.queue_participants) {
-                filteredData.queue_participants = filteredData.queue_participants.filter(participant => {
-                    const matchesSearch = !searchTerm || 
-                        (participant.fio && participant.fio.toLowerCase().includes(searchTerm)) ||
-                        (participant.userid && participant.userid.toString().includes(searchTerm));
-                    
-                    const matchesEvent = !eventFilter || 
-                        (participant.meroname && participant.meroname === eventFilter);
-                    
-                    return matchesSearch && matchesEvent;
-                });
-                
-                // Сортировка участников очереди
-                filteredData.queue_participants.sort((a, b) => {
-                    switch (sortBy) {
-                        case 'fio':
-                            return (a.fio || '').localeCompare(b.fio || '');
-                        case 'userid':
-                            return (a.userid || 0) - (b.userid || 0);
-                        case 'status':
-                            return (a.status || '').localeCompare(b.status || '');
-                        case 'oplata':
-                            return (b.oplata || false) - (a.oplata || false);
-                        case 'event':
-                            return (a.meroname || '').localeCompare(b.meroname || '');
-                        default:
-                            return 0;
-                    }
-                });
-            }
-            
-            // Фильтрация неполных команд
-            if (filteredData.incomplete_teams) {
-                filteredData.incomplete_teams = filteredData.incomplete_teams.filter(team => {
-                    const matchesEvent = !eventFilter || 
-                        (team.meroname && team.meroname === eventFilter);
-                    
-                    const matchesSearch = !searchTerm || 
-                        (team.meroname && team.meroname.toLowerCase().includes(searchTerm)) ||
-                        team.participants.some(p => 
-                            (p.fio && p.fio.toLowerCase().includes(searchTerm)) ||
-                            (p.userid && p.userid.toString().includes(searchTerm))
-                        );
-                    
-                    return matchesSearch && matchesEvent;
-                });
-            }
-            
-            displayQueueData(filteredData);
-        }
-
-        // Регистрация участника секретарем на месте
-        async function registerParticipant(oid) {
-            if (!confirm('Зарегистрировать участника на мероприятии?\nЭто означает, что участник прибыл на место проведения.')) {
+        // Подтверждение участия секретарем (из "Подтверждён" в "Зарегистрирован")
+        async function confirmParticipant(oid) {
+            if (!confirm('Зарегистрировать участника в мероприятии?')) {
                 return;
             }
 
             try {
-                const response = await fetch('/lks/php/admin/update_registration_status.php', {
+                const response = await fetch('/lks/php/secretary/update_registration_status.php', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded',
@@ -581,7 +554,7 @@ $userName = $currentUser['fio'] ?? 'Пользователь';
                 const result = await response.json();
                 
                 if (result.success) {
-                    showSuccess('Участник зарегистрирован на месте. Уведомление отправлено.');
+                    showSuccess('Участник зарегистрирован. Уведомление отправлено.');
                     loadQueueData(); // Перезагружаем данные
                 } else {
                     showError(result.error || result.message || 'Ошибка при регистрации');
@@ -592,16 +565,44 @@ $userName = $currentUser['fio'] ?? 'Пользователь';
             }
         }
 
-        // Подтверждение команды секретарем
-        async function confirmTeam(teamid, champn) {
-            console.log('confirmTeam called with:', { teamid, champn });
-            
-            if (!confirm('Подтвердить участие всей команды в мероприятии?')) {
+        // Подтверждение оплаты секретарем (только подтверждение, отмена недоступна)
+        async function confirmPayment(oid) {
+            if (!confirm('Подтвердить оплату участия?')) {
                 return;
             }
 
             try {
-                const response = await fetch('/lks/php/organizer/confirm_team.php', {
+                const response = await fetch('/lks/php/secretary/confirm_payment.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `registration_id=${oid}&oplata=1`
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showSuccess('Оплата подтверждена.');
+                    loadQueueData(); // Перезагружаем данные
+                } else {
+                    showError(result.error || result.message || 'Ошибка при подтверждении оплаты');
+                }
+            } catch (error) {
+                showError('Ошибка соединения: ' + error.message);
+                console.error('Error:', error);
+            }
+        }
+
+        // Подтверждение команды секретарем
+        async function confirmTeam(teamid, champn) {
+            
+            if (!confirm('Зарегистрировать всю команду в мероприятии?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/lks/php/secretary/confirm_team.php', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded',
@@ -612,10 +613,10 @@ $userName = $currentUser['fio'] ?? 'Пользователь';
                 const result = await response.json();
                 
                 if (result.success) {
-                    showSuccess(`Команда подтверждена. ${result.confirmed_count} участников уведомлены.`);
+                    showSuccess(`Команда зарегистрирована. ${result.confirmed_count} участников уведомлены.`);
                     loadQueueData(); // Перезагружаем данные
                 } else {
-                    showError(result.error || result.message || 'Ошибка при подтверждении команды');
+                    showError(result.error || result.message || 'Ошибка при регистрации команды');
                 }
             } catch (error) {
                 showError('Ошибка соединения: ' + error.message);
@@ -625,14 +626,13 @@ $userName = $currentUser['fio'] ?? 'Пользователь';
 
         // Подтверждение оплаты команды секретарем
         async function confirmTeamPayment(teamid, champn) {
-            console.log('confirmTeamPayment called with:', { teamid, champn });
             
             if (!confirm('Подтвердить оплату всей команды?')) {
                 return;
             }
 
             try {
-                const response = await fetch('/lks/php/organizer/confirm_team_payment.php', {
+                const response = await fetch('/lks/php/secretary/confirm_team_payment.php', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded',
@@ -654,62 +654,10 @@ $userName = $currentUser['fio'] ?? 'Пользователь';
             }
         }
 
-        // Дисквалификация участника секретарем
-        async function disqualifyParticipant(oid) {
-            if (!confirm('Дисквалифицировать участника?\nДисквалификация применяется за нарушение правил соревнований.')) {
-                return;
-            }
-
-            try {
-                const response = await fetch('/lks/php/admin/update_registration_status.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: `registration_id=${oid}&new_status=Дисквалифицирован`
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    showSuccess('Участник дисквалифицирован. Уведомление отправлено.');
-                    loadQueueData(); // Перезагружаем данные
-                } else {
-                    showError(result.error || result.message || 'Ошибка при дисквалификации');
-                }
-            } catch (error) {
-                showError('Ошибка соединения: ' + error.message);
-                console.error('Error:', error);
-            }
-        }
-
-        // Отметка неявки участника секретарем
-        async function markAsNoShow(oid) {
-            if (!confirm('Отметить участника как не явившегося?\nЭтот статус указывает, что участник не прибыл на мероприятие.')) {
-                return;
-            }
-
-            try {
-                const response = await fetch('/lks/php/admin/update_registration_status.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: `registration_id=${oid}&new_status=Неявка`
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    showSuccess('Участник отмечен как не явившийся.');
-                    loadQueueData(); // Перезагружаем данные
-                } else {
-                    showError(result.error || result.message || 'Ошибка при изменении статуса');
-                }
-            } catch (error) {
-                showError('Ошибка соединения: ' + error.message);
-                console.error('Error:', error);
-            }
+        // Редактирование регистрации
+        function editRegistration(oid) {
+            // Перенаправляем на страницу редактирования регистрации с параметром возврата
+            window.location.href = `edit-registration.php?oid=${oid}&return=queue.php`;
         }
 
         function showSuccess(message) {
@@ -741,5 +689,5 @@ $userName = $currentUser['fio'] ?? 'Пользователь';
             }, 5000);
         }
     </script>
-</body>
-</html> 
+    
+<?php include '../includes/footer.php'; ?> 

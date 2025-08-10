@@ -164,11 +164,22 @@ try {
                             // Загружаем существующий протокол
                             $existingData = $protocolManager->loadProtocol($redisKey);
                             if ($existingData) {
+                                // Если протокол пустой, попробуем заполнить участников заново (важно для D-10/MIX)
+                                if (!isset($existingData['participants']) || count($existingData['participants']) === 0) {
+                                    error_log("ℹ️ [LOAD_PROTOCOLS_DATA] Протокол пустой, формируем участников заново: $redisKey");
+                                    $recalcParticipants = getParticipantsForGroup($db, $meroId, $boatClass, $sex, $dist, $minAge, $maxAge, $ageGroupList);
+                                    $existingData['participants'] = $recalcParticipants;
+                                    $protocolManager->updateProtocol($redisKey, $existingData);
+                                }
+
                                 error_log("✅ [LOAD_PROTOCOLS_DATA] Загружен существующий протокол: $redisKey");
+                                // Нормализуем пол для отображения (M/W -> М/Ж; MIX оставляем)
+                                $displaySex = ($sex === 'M' ? 'М' : ($sex === 'W' ? 'Ж' : $sex));
+
                                 $protocolsData[] = [
                                     'meroId' => (int)$meroId,
                                     'discipline' => $boatClass,
-                                    'sex' => $sex,
+                                    'sex' => $displaySex,
                                     'distance' => $dist,
                                     'ageGroups' => [$existingData],
                                     'created_at' => date('Y-m-d H:i:s')
@@ -178,7 +189,7 @@ try {
                         }
                         
                         // Получаем участников для этой группы
-                        $participants = getParticipantsForGroup($db, $meroId, $boatClass, $sex, $dist, $minAge, $maxAge);
+                        $participants = getParticipantsForGroup($db, $meroId, $boatClass, $sex, $dist, $minAge, $maxAge, $ageGroupList);
                         
                         // НЕ назначаем номера дорожек автоматически - жеребьевка должна быть ручной
                         // $participants = assignLanesToParticipants($participants, $boatClass);
@@ -194,10 +205,13 @@ try {
                         // Сохраняем данные в JSON файл
                         $protocolManager->saveProtocol($redisKey, $ageGroupData);
                         
+                        // Нормализуем пол для отображения (M/W -> М/Ж; MIX оставляем)
+                        $displaySex = ($sex === 'M' ? 'М' : ($sex === 'W' ? 'Ж' : $sex));
+
                         $protocolsData[] = [
                             'meroId' => (int)$meroId,
                             'discipline' => $boatClass,
-                            'sex' => $sex,
+                            'sex' => $displaySex,
                             'distance' => $dist,
                             'ageGroups' => [$ageGroupData],
                             'created_at' => date('Y-m-d H:i:s')
@@ -229,25 +243,43 @@ try {
 /**
  * Получение участников для группы
  */
-function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $minAge, $maxAge) {
+function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $minAge, $maxAge, $ageGroupList) {
     $currentYear = date('Y');
     $yearEnd = $currentYear . '-12-31';
     
+    // Нормализация пола из конфигурации мероприятия в формат БД
+    $normalizeSex = function($s) {
+        if ($s === 'M') return 'М';
+        if ($s === 'W') return 'Ж';
+        if ($s === 'М' || $s === 'Ж') return $s;
+        return $s; // MIX или другие оставляем как есть
+    };
+
+    $normalizedSex = $normalizeSex($sex);
+
+    // Базовый запрос
     $sql = "
         SELECT 
             u.oid, u.userid, u.fio, u.sex, u.birthdata, u.sportzvanie, u.city,
-            t.teamname, t.teamcity
+            t.teamname, t.teamcity, lr.teams_oid AS team_id
         FROM users u
         LEFT JOIN listreg lr ON u.oid = lr.users_oid
         LEFT JOIN teams t ON lr.teams_oid = t.oid
         WHERE lr.meros_oid = ?
-        AND u.sex = ?
         AND u.accessrights = 'Sportsman'
         AND lr.status IN ('Зарегистрирован', 'Подтверждён')
     ";
-    
+
+    $params = [$meroId];
+
+    // Для D-10 пол определяется составом команды, поэтому не фильтруем по полу на уровне SQL
+    if ($boatClass !== 'D-10' && strtoupper($sex) !== 'MIX') {
+        $sql .= " AND u.sex = ?";
+        $params[] = $normalizedSex;
+    }
+
     $stmt = $db->prepare($sql);
-    $stmt->execute([$meroId, $sex]);
+    $stmt->execute($params);
     $participants = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     error_log("🔍 Поиск участников для группы {$boatClass}_{$sex}_{$distance} (возраст {$minAge}-{$maxAge}): найдено " . count($participants) . " участников");
@@ -255,6 +287,210 @@ function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $min
     $filteredParticipants = [];
     $addedCount = 0;
     
+    // Специальная логика для D-10: ОТБОР ПО ВОЗРАСТУ САМОГО МЛАДШЕГО гребца и типу команды (М/Ж/MIX)
+    if ($boatClass === 'D-10') {
+        // Группируем спортсменов по командам
+        $teams = [];
+        foreach ($participants as $p) {
+            // Команда обязательна для D-10
+            if (!isset($p['team_id']) || $p['team_id'] === null) {
+                continue;
+            }
+            $tid = (int)$p['team_id'];
+            if (!isset($teams[$tid])) {
+                $teams[$tid] = [
+                    'city' => $p['teamcity'] ?? '',
+                    'name' => $p['teamname'] ?? '',
+                    'members' => []
+                ];
+            }
+            $teams[$tid]['members'][] = $p;
+        }
+
+        foreach ($teams as $tid => $team) {
+            if (empty($team['members'])) continue;
+
+            // Возрасты команды на 31.12 текущего года
+            $ages = [];
+            foreach ($team['members'] as $m) {
+                if (!empty($m['birthdata'])) {
+                    $bd = new DateTime($m['birthdata']);
+                    $yearEndDate = new DateTime($yearEnd);
+                    $ages[] = $yearEndDate->diff($bd)->y;
+                }
+            }
+            if (empty($ages)) continue;
+            $youngestAge = min($ages); // самый младший
+
+            // Команда попадает в данную возрастную группу, если САМЫЙ МЛАДШИЙ попадает в диапазон
+            if ($youngestAge < $minAge || $youngestAge > $maxAge) {
+                continue; // команда вне возрастной группы
+            }
+
+            // Определяем тип команды по составу
+            $hasM = false; $hasW = false;
+            foreach ($team['members'] as $m) {
+                if (($m['sex'] ?? '') === 'М') $hasM = true;
+                if (($m['sex'] ?? '') === 'Ж') $hasW = true;
+            }
+            $teamSex = $hasM && $hasW ? 'MIX' : ($hasM ? 'M' : 'W');
+
+            // Оставляем только команды соответствующего типа
+            if (strtoupper($sex) !== strtoupper($teamSex)) {
+                continue;
+            }
+
+            // Определяем возрастную группу команды (по самому младшему)
+            $teamAgeGroupLabel = computeAgeGroupLabel($youngestAge, $ageGroupList);
+
+            // Добавляем ВСЕХ членов команды как участников протокола (UI группирует их в одну строку команды)
+            foreach ($team['members'] as $member) {
+                // Возраст участника
+                $memberAge = null;
+                if (!empty($member['birthdata'])) {
+                    $bd = new DateTime($member['birthdata']);
+                    $yearEndDate = new DateTime($yearEnd);
+                    $memberAge = $yearEndDate->diff($bd)->y;
+                }
+                // Проверяем дисциплину пользователя
+                $disciplineSql = "
+                    SELECT discipline 
+                    FROM listreg 
+                    WHERE users_oid = ? AND meros_oid = ?
+                ";
+                $disciplineStmt = $db->prepare($disciplineSql);
+                $disciplineStmt->execute([$member['oid'], $meroId]);
+                $disciplineData = $disciplineStmt->fetch(PDO::FETCH_ASSOC);
+                if (!$disciplineData) continue;
+                $discipline = json_decode($disciplineData['discipline'], true);
+                if (!$discipline || !isset($discipline[$boatClass])) continue;
+
+                // Номера дорожек (если уже задавались)
+                $existingLane = $discipline[$boatClass]['lane'] ?? null;
+                $existingWater = $discipline[$boatClass]['water'] ?? null;
+
+                // Возрастная группа участника (конкретного спортсмена)
+                $participantAgeGroupLabel = $memberAge !== null ? computeAgeGroupLabel($memberAge, $ageGroupList) : '';
+
+                $filteredParticipants[] = [
+                    'userId' => $member['userid'],
+                    'userid' => $member['userid'],
+                    'fio' => $member['fio'],
+                    'sex' => $member['sex'],
+                    'birthdata' => $member['birthdata'],
+                    'sportzvanie' => $member['sportzvanie'],
+                    'teamName' => $team['name'] ?? '',
+                    'teamCity' => $team['city'] ?? '',
+                    'teamId' => $tid,
+                    'lane' => $existingLane,
+                    'water' => $existingWater ?? $existingLane,
+                    'place' => null,
+                    'finishTime' => null,
+                    'ageGroupLabel' => $participantAgeGroupLabel,
+                    'teamAgeGroupLabel' => $teamAgeGroupLabel,
+                    'addedManually' => false,
+                    'addedAt' => date('Y-m-d H:i:s')
+                ];
+                $addedCount++;
+            }
+        }
+
+        error_log("✅ (D-10) Группа {$boatClass}_{$sex}_{$distance} (возраст {$minAge}-{$maxAge}): добавлено {$addedCount} участников (по командам)");
+        return $filteredParticipants;
+    }
+
+    // Логика для парных/экипажных лодок (средний возраст экипажа): K-2, C-2, OD-2, K-4, C-4
+    if (in_array($boatClass, ['K-2', 'C-2', 'OD-2', 'K-4', 'C-4'], true)) {
+        // Группируем спортсменов по командам
+        $teams = [];
+        foreach ($participants as $p) {
+            if (!isset($p['team_id']) || $p['team_id'] === null) {
+                continue; // для экипажных лодок команда обязательна
+            }
+            $tid = (int)$p['team_id'];
+            if (!isset($teams[$tid])) {
+                $teams[$tid] = [
+                    'city' => $p['teamcity'] ?? '',
+                    'name' => $p['teamname'] ?? '',
+                    'members' => []
+                ];
+            }
+            $teams[$tid]['members'][] = $p;
+        }
+
+        foreach ($teams as $tid => $team) {
+            if (empty($team['members'])) continue;
+
+            // Средний возраст экипажа
+            $ages = [];
+            foreach ($team['members'] as $m) {
+                if (!empty($m['birthdata'])) {
+                    $bd = new DateTime($m['birthdata']);
+                    $yearEndDate = new DateTime($yearEnd);
+                    $ages[] = $yearEndDate->diff($bd)->y;
+                }
+            }
+            if (empty($ages)) continue;
+            $avgAge = array_sum($ages) / count($ages);
+
+            if ($avgAge < $minAge || $avgAge > $maxAge) {
+                continue; // команда вне возрастной группы
+            }
+
+            // Добавляем всех членов экипажа как участников
+            foreach ($team['members'] as $member) {
+                // Возраст участника
+                $memberAge = null;
+                if (!empty($member['birthdata'])) {
+                    $bd = new DateTime($member['birthdata']);
+                    $yearEndDate = new DateTime($yearEnd);
+                    $memberAge = $yearEndDate->diff($bd)->y;
+                }
+
+                // Проверяем дисциплину пользователя
+                $disciplineSql = "
+                    SELECT discipline
+                    FROM listreg
+                    WHERE users_oid = ? AND meros_oid = ?
+                ";
+                $disciplineStmt = $db->prepare($disciplineSql);
+                $disciplineStmt->execute([$member['oid'], $meroId]);
+                $disciplineData = $disciplineStmt->fetch(PDO::FETCH_ASSOC);
+                if (!$disciplineData) continue;
+                $discipline = json_decode($disciplineData['discipline'], true);
+                if (!$discipline || !isset($discipline[$boatClass])) continue;
+
+                // Номера дорожек
+                $existingLane = $discipline[$boatClass]['lane'] ?? null;
+                $existingWater = $discipline[$boatClass]['water'] ?? null;
+
+                $filteredParticipants[] = [
+                    'userId' => $member['userid'],
+                    'userid' => $member['userid'],
+                    'fio' => $member['fio'],
+                    'sex' => $member['sex'],
+                    'birthdata' => $member['birthdata'],
+                    'sportzvanie' => $member['sportzvanie'],
+                    'teamName' => $team['name'] ?? '',
+                    'teamCity' => $team['city'] ?? '',
+                    'teamId' => $tid,
+                    'lane' => $existingLane,
+                    'water' => $existingWater ?? $existingLane,
+                    'place' => null,
+                    'finishTime' => null,
+                    'ageGroupLabel' => $memberAge !== null ? computeAgeGroupLabel($memberAge, $ageGroupList) : '',
+                    'teamAgeGroupLabel' => computeAgeGroupLabel((int)round($avgAge), $ageGroupList),
+                    'addedManually' => false,
+                    'addedAt' => date('Y-m-d H:i:s')
+                ];
+                $addedCount++;
+            }
+        }
+
+        error_log("✅ ({$boatClass}) Группа {$boatClass}_{$sex}_{$distance} (возраст {$minAge}-{$maxAge}): добавлено {$addedCount} участников (по командам, средний возраст)");
+        return $filteredParticipants;
+    }
+
     foreach ($participants as $participant) {
         // Проверяем возраст
         $birthDate = new DateTime($participant['birthdata']);
@@ -298,10 +534,12 @@ function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $min
                         'sportzvanie' => $participant['sportzvanie'],
                         'teamName' => $participant['teamname'] ?? '',
                         'teamCity' => $participant['teamcity'] ?? '',
+                        'teamId' => isset($participant['team_id']) ? (int)$participant['team_id'] : null,
                         'lane' => $existingLane, // Загружаем существующий номер дорожки
                         'water' => $existingWater ?? $existingLane, // Загружаем существующий номер воды
                         'place' => null,
                         'finishTime' => null,
+                        'ageGroupLabel' => computeAgeGroupLabel($age, $ageGroupList),
                         'addedManually' => false,
                         'addedAt' => date('Y-m-d H:i:s')
                     ];
@@ -313,6 +551,24 @@ function getParticipantsForGroup($db, $meroId, $boatClass, $sex, $distance, $min
     error_log("✅ Группа {$boatClass}_{$sex}_{$distance} (возраст {$minAge}-{$maxAge}): добавлено {$addedCount} участников");
     
     return $filteredParticipants;
+}
+
+/**
+ * Определить текстовую возрастную группу по возрасту и списку групп ("группа N: min-max")
+ */
+function computeAgeGroupLabel($age, $ageGroupList) {
+    if (!is_array($ageGroupList)) return '';
+    foreach ($ageGroupList as $grp) {
+        $grp = trim($grp);
+        if (preg_match('/^(.+?):\s*(\d+)-(\d+)$/u', $grp, $m)) {
+            $min = (int)$m[2];
+            $max = (int)$m[3];
+            if ($age >= $min && $age <= $max) {
+                return $grp; // Возвращаем полное название (например: "группа 1: 18-29")
+            }
+        }
+    }
+    return '';
 }
 
 /**
@@ -390,7 +646,7 @@ function getMaxLanesForBoat($boatClass) {
         case 'OC-1':
             return 4; // 4 дорожки для четверок
         case 'D-10':
-            return 3; // 3 дорожки для драконов
+            return 6; // 6 дорожек для драконов
         default:
             return 8; // По умолчанию 8 дорожек
     }

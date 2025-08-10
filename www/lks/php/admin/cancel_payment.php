@@ -15,10 +15,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $registration_id = $_POST['registration_id'] ?? null;
-$new_status = $_POST['new_status'] ?? null;
 
-if (!$registration_id || !$new_status) {
-    echo json_encode(['success' => false, 'error' => 'Отсутствуют обязательные параметры']);
+if (!$registration_id) {
+    echo json_encode(['success' => false, 'error' => 'Отсутствует registration_id']);
     exit;
 }
 
@@ -41,31 +40,29 @@ try {
         exit;
     }
     
-    // Обновляем статус
+    // Отменяем оплату (устанавливаем oplata = false)
     $stmt = $db->prepare("
         UPDATE listreg 
-        SET status = ? 
+        SET oplata = false 
         WHERE oid = ?
     ");
-    $stmt->execute([$new_status, $registration_id]);
+    $stmt->execute([$registration_id]);
     
     // Логируем действие
-    $action = "Изменение статуса регистрации с '{$registration['status']}' на '{$new_status}'";
     $stmt = $db->prepare("
         INSERT INTO user_actions (users_oid, action, ip_address, created_at)
         VALUES (?, ?, ?, NOW())
     ");
-    $stmt->execute([$_SESSION['user_id'], $action, $_SERVER['REMOTE_ADDR'] ?? '']);
+    $stmt->execute([$_SESSION['user_id'], "Отмена оплаты регистрации", $_SERVER['REMOTE_ADDR'] ?? '']);
     
     echo json_encode([
         'success' => true,
-        'message' => 'Статус успешно обновлен',
-        'registration_id' => $registration_id,
-        'new_status' => $new_status
+        'message' => 'Оплата отменена',
+        'registration_id' => $registration_id
     ]);
     
 } catch (Exception $e) {
-    error_log("Ошибка в update_registration_status.php (admin): " . $e->getMessage());
+    error_log("Ошибка в cancel_payment.php (admin): " . $e->getMessage());
     echo json_encode(['success' => false, 'error' => 'Ошибка базы данных']);
 }
 ?> 

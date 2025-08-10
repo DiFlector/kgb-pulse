@@ -58,15 +58,21 @@ try {
         exit;
     }
 
-    // Подключаемся к Redis
-    $redis = new Redis();
-    try {
-        $connected = $redis->connect('redis', 6379, 5);
-        if (!$connected) {
-            throw new Exception('Не удалось подключиться к Redis');
+    // Подключаемся к Redis (если расширение доступно)
+    $redis = null;
+    if (class_exists('Redis')) {
+        try {
+            $redis = new Redis();
+            $connected = $redis->connect('redis', 6379, 5);
+            if (!$connected) {
+                throw new Exception('Не удалось подключиться к Redis');
+            }
+        } catch (Exception $e) {
+            error_log("Ошибка подключения к Redis: " . $e->getMessage());
+            $redis = null;
         }
-    } catch (Exception $e) {
-        error_log("Ошибка подключения к Redis: " . $e->getMessage());
+    } else {
+        error_log('Расширение Redis недоступно, используем JSON-файлы как источник статуса');
         $redis = null;
     }
 

@@ -60,8 +60,6 @@
 
 <!-- Bootstrap 5 JS (с Popper.js) -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<!-- jQuery -->
-<script src="/lks/js/libs/jquery/jquery-3.7.1.min.js"></script>
 
 <!-- Единый менеджер sidebar (без конфликтов) -->
 <script src="/lks/js/sidebar-manager.js"></script>

@@ -32,18 +32,20 @@ try {
     $userStmt->execute();
     $userInfo = $userStmt->fetch(PDO::FETCH_ASSOC);
     
-    // Получаем статистику пользователя
-    $statsQuery = "
+            // Получаем статистику пользователя
+            $statsQuery = "
         SELECT 
-            meroname,
-            place,
-            time,
-            team,
-            data,
-            race_type
-        FROM user_statistic 
-        WHERE users_oid = :userid 
-        ORDER BY data DESC, meroname ASC
+            us.meroname,
+            us.place,
+            us.time,
+            us.team,
+            us.data,
+            us.race_type,
+            m.fileresults
+        FROM user_statistic us
+        LEFT JOIN meros m ON TRIM(m.meroname) = TRIM(us.meroname)
+        WHERE us.users_oid = :userid 
+        ORDER BY us.data DESC, us.meroname ASC
     ";
     $statsStmt = $db->prepare($statsQuery);
     $statsStmt->bindParam(':userid', $userId, PDO::PARAM_INT);
@@ -199,6 +201,7 @@ include '../includes/header.php';
                                             <th>Команда</th>
                                             <th>Место</th>
                                             <th>Время</th>
+                                            <th>Тех. результаты</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -246,6 +249,15 @@ include '../includes/header.php';
                                                 <td>
                                                     <?php if (!empty($stat['time'])): ?>
                                                         <code><?= htmlspecialchars($stat['time']) ?></code>
+                                                    <?php else: ?>
+                                                        <span class="text-muted">—</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td>
+                                                    <?php if (!empty($stat['fileresults'])): ?>
+                                                        <a href="<?= htmlspecialchars($stat['fileresults']) ?>" class="btn btn-sm btn-outline-primary">
+                                                            <i class="bi bi-download"></i>
+                                                        </a>
                                                     <?php else: ?>
                                                         <span class="text-muted">—</span>
                                                     <?php endif; ?>

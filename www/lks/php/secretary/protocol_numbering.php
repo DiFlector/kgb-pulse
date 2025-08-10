@@ -5,6 +5,7 @@
  */
 
 require_once __DIR__ . '/../helpers.php';
+require_once __DIR__ . '/../common/JsonProtocolManager.php';
 
 class ProtocolNumbering {
     
@@ -346,14 +347,22 @@ class ProtocolNumbering {
     public static function checkProtocolsCompletion($redis, $meroId, $classDistance, $selectedDisciplines) {
         $protocols = self::getProtocolsStructure($classDistance, $selectedDisciplines);
         $completionStatus = [];
+        $jsonManager = JsonProtocolManager::getInstance();
         
         foreach ($protocols as $protocol) {
             // Используем полное название возрастной группы для ключа
             $ageGroupName = isset($protocol['ageGroup']['full_name']) ? $protocol['ageGroup']['full_name'] : $protocol['ageGroup']['name'];
             $key = self::getProtocolKey($meroId, $protocol['class'], $protocol['sex'], $protocol['distance'], $ageGroupName);
             
-            // Проверяем наличие данных в Redis
-            $protocolData = $redis->get($key);
+            // Сначала пытаемся читать из Redis (если он доступен)
+            $protocolData = null;
+            if ($redis) {
+                try {
+                    $protocolData = $redis->get($key);
+                } catch (Exception $e) {
+                    $protocolData = null;
+                }
+            }
             $hasParticipants = false;
             $isProtected = false;
             
@@ -362,6 +371,20 @@ class ProtocolNumbering {
                 if ($data && isset($data['participants']) && count($data['participants']) > 0) {
                     $hasParticipants = true;
                     $isProtected = isset($data['protected']) && $data['protected'];
+                }
+            } else {
+                // Фолбэк: читаем из JSON-файлов
+                $jsonKey = "protocol:{$meroId}:{$protocol['class']}:{$protocol['sex']}:{$protocol['distance']}:{$ageGroupName}";
+                $data = $jsonManager->loadProtocol($jsonKey);
+                if ($data && isset($data['participants']) && count($data['participants']) > 0) {
+                    $hasParticipants = true;
+                    // пометка protected может быть в корне или у участников
+                    $isProtected = !empty($data['protected']);
+                    if (!$isProtected) {
+                        foreach ($data['participants'] as $p) {
+                            if (!empty($p['protected'])) { $isProtected = true; break; }
+                        }
+                    }
                 }
             }
             
@@ -413,8 +436,9 @@ class ProtocolNumbering {
         
         // Определяем статус для каждой дисциплины
         foreach ($disciplinesStatus as $key => &$discipline) {
-            if ($discipline['filledProtocols'] === $discipline['totalProtocols']) {
-                $discipline['status'] = 'completed'; // Зеленый - все протоколы заполнены
+            // Зеленый, если все заполнены ИЛИ все пустые
+            if ($discipline['filledProtocols'] === $discipline['totalProtocols'] || $discipline['filledProtocols'] === 0) {
+                $discipline['status'] = 'completed';
             } elseif ($discipline['filledProtocols'] > 0) {
                 $discipline['status'] = 'partial'; // Желтый - частично заполнено
             } else {

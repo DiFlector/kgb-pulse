@@ -84,8 +84,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Обработка загруженного документа
             $documentPath = null;
             if ($documentFile && $documentFile['error'] === UPLOAD_ERR_OK) {
-                // Используем абсолютный путь от корня документов
-                $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/lks/files/polojenia/';
+                // Используем путь относительно текущего файла
+                $uploadDir = __DIR__ . '/../../files/polojenia/';
                 
                 // Проверяем, что директория существует и доступна для записи
                 if (!is_dir($uploadDir)) {
@@ -182,7 +182,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($removeDocument === '1') {
                     // Удаляем старый файл с диска
                     if (!empty($eventData['filepolojenie'])) {
-                        $oldFilePath = $_SERVER['DOCUMENT_ROOT'] . '/lks/' . $eventData['filepolojenie'];
+                        $oldFilePath = __DIR__ . '/../../' . ltrim($eventData['filepolojenie'], '/');
                         if (file_exists($oldFilePath)) {
                             unlink($oldFilePath);
                             error_log("Удален старый файл: " . $oldFilePath);
@@ -192,7 +192,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } elseif ($documentPath) {
                     // Удаляем старый файл при замене
                     if (!empty($eventData['filepolojenie'])) {
-                        $oldFilePath = $_SERVER['DOCUMENT_ROOT'] . '/lks/' . $eventData['filepolojenie'];
+                        $oldFilePath = __DIR__ . '/../../' . ltrim($eventData['filepolojenie'], '/');
                         if (file_exists($oldFilePath)) {
                             unlink($oldFilePath);
                             error_log("Заменен старый файл: " . $oldFilePath);

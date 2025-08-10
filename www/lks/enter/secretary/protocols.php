@@ -167,16 +167,14 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
         }
         .table-responsive {
             flex: 1;
-            display: flex;
-            flex-direction: column;
+            display: block; /* таблица внутри прокручивается, контейнер не флексит её */
         }
         .protocol-table {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
+            display: table; /* стандартное поведение таблицы */
+            width: 100%;
         }
         .protocol-table tbody {
-            flex: 1;
+            display: table-row-group; /* вернуть стандартную модель таблицы */
         }
         /* Стили для пустых таблиц */
         .protocol-table tbody tr td[colspan] {
@@ -346,11 +344,13 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
         .protocol-table th {
             background-color: #f8f9fa;
             font-weight: 600;
-            white-space: nowrap; /* Предотвращаем перенос текста в заголовках */
+            white-space: normal; /* Разрешаем перенос в 2 строки */
             padding: 8px 12px; /* Увеличиваем отступы для лучшей читаемости */
             text-align: center; /* Выравниваем заголовки по центру */
             overflow: hidden; /* Скрываем переполнение */
             text-overflow: ellipsis; /* Показываем многоточие при переполнении */
+            line-height: 1.1;
+            min-height: 36px; /* визуально 2 строки при необходимости */
         }
         .protocol-table td {
             vertical-align: middle; /* Выравнивание содержимого по центру */
@@ -470,17 +470,18 @@ $participantsCount = $stmt->fetch(PDO::FETCH_ASSOC)['total_participants'];
         }
         /* Исправления для таблиц протоколов */
         .table-responsive {
-            width: 100%; /* Обеспечиваем полную ширину */
-            overflow-x: auto; /* Добавляем горизонтальную прокрутку при необходимости */
-            margin-bottom: 10px; /* Добавляем отступ снизу */
-            display: block; /* Обеспечиваем блочное отображение */
-            border: 1px solid #dee2e6; /* Добавляем границу для лучшей видимости */
+            width: 100%; /* Полная ширина */
+            overflow-x: auto; /* Горизонтальная прокрутка при необходимости */
+            overflow-y: hidden; /* Исключаем выход за рамки по вертикали */
+            margin-bottom: 10px; /* Отступ снизу */
+            display: block; /* Блочное отображение */
+            border: 1px solid #dee2e6; /* Граница */
             border-radius: 4px; /* Скругляем углы */
         }
         .protocol-table {
-            table-layout: fixed; /* Фиксированная ширина столбцов для лучшего контроля */
+            table-layout: fixed; /* Фиксированная ширина столбцов */
             width: 100%; /* Полная ширина таблицы */
-            min-width: 800px; /* Увеличиваем минимальную ширину для лучшего отображения */
+            min-width: 100%; /* Не выходим за пределы контейнера */
             border-collapse: collapse; /* Убираем двойные границы */
         }
         /* Стили для пустых таблиц с правильным colspan */

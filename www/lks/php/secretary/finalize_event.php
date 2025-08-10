@@ -146,14 +146,12 @@ try {
             }
         }
 
-        // Обновляем статус мероприятия
-        $stmt = $pdo->prepare("UPDATE meros SET status = 'Завершено' WHERE champn = ?");
+        // Переводим мероприятие в статус "Результаты"
+        $stmt = $pdo->prepare("UPDATE meros SET status = 'Результаты'::merostat WHERE champn = ?");
         $stmt->execute([$meroId]);
 
-        // Сохраняем имя файла итогового протокола (пока пустое, будет заполнено при генерации)
-        $finalProtocolFile = "final_protocol_{$meroId}.pdf";
-        $stmt = $pdo->prepare("UPDATE meros SET fileresults = ? WHERE champn = ?");
-        $stmt->execute([$finalProtocolFile, $meroId]);
+        // Не трогаем meros.fileresults здесь. Файл техрезультатов создаётся
+        // отдельно и записывается generate_technical_results.php
 
         // Фиксируем транзакцию
         $pdo->commit();

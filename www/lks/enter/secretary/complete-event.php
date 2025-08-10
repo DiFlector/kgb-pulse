@@ -2,6 +2,7 @@
 require_once '../../php/common/Auth.php';
 require_once '../../php/db/Database.php';
 require_once '../../php/secretary/protocol_numbering.php';
+require_once '../../php/common/JsonProtocolManager.php';
 
 $auth = new Auth();
 $user = $auth->checkRole(['Secretary', 'SuperUser', 'Admin']);
@@ -37,7 +38,7 @@ try {
     
     $classDistance = json_decode($event['class_distance'], true);
     
-} catch (Exception $e) {
+} catch (Throwable $e) {
     error_log("Ошибка в complete-event.php: " . $e->getMessage());
     echo '<div class="alert alert-danger">Ошибка загрузки данных мероприятия</div>';
     echo '<a href="main.php" class="btn btn-primary">Вернуться к списку мероприятий</a>';
@@ -45,62 +46,70 @@ try {
 }
 
 // Подключаемся к Redis для получения данных о медалях
-$redis = new Redis();
+$redis = null;
 try {
-    $connected = $redis->connect('redis', 6379, 5);
-    if (!$connected) {
-        throw new Exception('Не удалось подключиться к Redis');
+    if (class_exists('Redis')) {
+        $redis = new Redis();
+        $connected = $redis->connect('redis', 6379, 5);
+        if (!$connected) {
+            throw new Exception('Не удалось подключиться к Redis');
+        }
+    } else {
+        throw new Exception('Класс Redis отсутствует');
     }
-} catch (Exception $e) {
+} catch (Throwable $e) {
     error_log("Ошибка подключения к Redis: " . $e->getMessage());
     $redis = null;
 }
 
 // Получаем статистику медалей
 $medalsStats = [];
-if ($redis) {
-    try {
-        $protocols = ProtocolNumbering::getProtocolsStructure($classDistance, $_SESSION['selected_disciplines'] ?? null);
-        
-        foreach ($protocols as $protocol) {
-            $key = ProtocolNumbering::getProtocolKey($eventId, $protocol['class'], $protocol['sex'], $protocol['distance'], $protocol['ageGroup']);
-            $protocolData = $redis->get($key);
-            
-            if ($protocolData) {
-                $data = json_decode($protocolData, true);
-                if ($data && isset($data['participants'])) {
-                    $disciplineKey = $protocol['class'] . '_' . $protocol['sex'] . '_' . $protocol['distance'];
-                    
-                    if (!isset($medalsStats[$disciplineKey])) {
-                        $medalsStats[$disciplineKey] = [
-                            'discipline' => $disciplineKey,
-                            'gold' => 0,
-                            'silver' => 0,
-                            'bronze' => 0,
-                            'total' => 0
-                        ];
-                    }
-                    
-                    // Подсчитываем медали (участники с местами 1, 2, 3)
-                    foreach ($data['participants'] as $participant) {
-                        if (isset($participant['place']) && is_numeric($participant['place'])) {
-                            $place = intval($participant['place']);
-                            if ($place === 1) {
-                                $medalsStats[$disciplineKey]['gold']++;
-                            } elseif ($place === 2) {
-                                $medalsStats[$disciplineKey]['silver']++;
-                            } elseif ($place === 3) {
-                                $medalsStats[$disciplineKey]['bronze']++;
-                            }
-                            $medalsStats[$disciplineKey]['total']++;
-                        }
-                    }
+try {
+    $protocols = ProtocolNumbering::getProtocolsStructure($classDistance, $_SESSION['selected_disciplines'] ?? null);
+    $jsonManager = JsonProtocolManager::getInstance();
+
+    foreach ($protocols as $protocol) {
+        $disciplineKey = $protocol['class'] . '_' . $protocol['sex'] . '_' . $protocol['distance'];
+        if (!isset($medalsStats[$disciplineKey])) {
+            $medalsStats[$disciplineKey] = [
+                'discipline' => $disciplineKey,
+                'gold' => 0,
+                'silver' => 0,
+                'bronze' => 0,
+                'total' => 0
+            ];
+        }
+
+        // Полное имя возрастной группы
+        $ageGroupName = isset($protocol['ageGroup']['full_name']) ? $protocol['ageGroup']['full_name'] : $protocol['ageGroup']['name'];
+        // Ключ JSON протокола
+        $jsonKey = "protocol:{$eventId}:{$protocol['class']}:{$protocol['sex']}:{$protocol['distance']}:{$ageGroupName}";
+
+        $data = $jsonManager->loadProtocol($jsonKey);
+        if (!$data && $redis) {
+            // Фолбэк для старых данных в Redis
+            try {
+                $redisKey = ProtocolNumbering::getProtocolKey($eventId, $protocol['class'], $protocol['sex'], $protocol['distance'], $ageGroupName);
+                $raw = $redis->get($redisKey);
+                $data = $raw ? json_decode($raw, true) : null;
+            } catch (Throwable $e) { $data = null; }
+        }
+
+        if ($data && isset($data['participants'])) {
+            foreach ($data['participants'] as $participant) {
+                $place = $participant['place'] ?? null;
+                if (is_numeric($place)) {
+                    $place = (int)$place;
+                    if ($place === 1) $medalsStats[$disciplineKey]['gold']++;
+                    elseif ($place === 2) $medalsStats[$disciplineKey]['silver']++;
+                    elseif ($place === 3) $medalsStats[$disciplineKey]['bronze']++;
+                    $medalsStats[$disciplineKey]['total']++;
                 }
             }
         }
-    } catch (Exception $e) {
-        error_log("Ошибка получения статистики медалей: " . $e->getMessage());
     }
+} catch (Throwable $e) {
+    error_log("Ошибка получения статистики медалей: " . $e->getMessage());
 }
 
 $pageTitle = 'Завершение мероприятия';
@@ -148,10 +157,10 @@ $pageTitle = 'Завершение мероприятия';
                 </a>
             </div>
 
-            <!-- Информация о мероприятии -->
-            <div class="row mb-4">
-                <div class="col-md-6">
-                    <div class="card">
+            <!-- Верхний ряд: информация + график (по 1/2 ширины) -->
+            <div class="row mb-4 align-items-stretch">
+                <div class="col-lg-6 mb-3 mb-lg-0">
+                    <div class="card h-100">
                         <div class="card-header bg-primary text-white">
                             <h5 class="mb-0"><i class="bi bi-info-circle"></i> Информация о мероприятии</h5>
                         </div>
@@ -160,36 +169,114 @@ $pageTitle = 'Завершение мероприятия';
                             <p><strong>Дата:</strong> <?= htmlspecialchars($event['merodata']) ?></p>
                             <p><strong>Номер:</strong> <?= htmlspecialchars($event['champn']) ?></p>
                             <p><strong>Статус:</strong> <span class="badge bg-success">Готово к завершению</span></p>
+                            <?php if (!empty($event['fileresults'])): ?>
+                                <p class="mb-0"><strong>Файл тех. результатов:</strong> 
+                                    <a href="<?= htmlspecialchars($event['fileresults']) ?>" class="link-primary">скачать</a>
+                                </p>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
-                <div class="col-md-6">
-                    <div class="card">
+                <div class="col-lg-6">
+                    <div class="card h-100">
+                        <div class="card-header bg-primary text-white">
+                            <h6 class="mb-0"><i class="bi bi-pie-chart"></i> Распределение медалей</h6>
+                        </div>
+                        <div class="card-body" style="height: 360px;">
+                            <!-- Легенда в стиле разделов -->
+                            <div class="mb-2">
+                                <span class="badge rounded-pill" style="background-color:#FFD700;color:#000;">Золото</span>
+                                <span class="badge rounded-pill bg-secondary">Серебро</span>
+                                <span class="badge rounded-pill" style="background-color:#CD7F32;">Бронза</span>
+                            </div>
+                            <div style="height: 310px;">
+                                <canvas id="medalChart" style="width:100%; height:100%;"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Второй ряд: компактная сводка медалей (1/2 ширины) -->
+            <div class="row mb-4">
+                <div class="col-lg-6">
+                    <div class="card h-100">
                         <div class="card-header bg-success text-white">
                             <h5 class="mb-0"><i class="bi bi-trophy"></i> Статистика медалей</h5>
                         </div>
                         <div class="card-body">
                             <?php if (!empty($medalsStats)): ?>
                                 <div class="row text-center">
-                                    <div class="col-md-4">
-                                        <div class="gold fs-4"><i class="bi bi-award"></i></div>
+                                    <div class="col-4">
+                                        <div class="gold"><i class="bi bi-award"></i></div>
                                         <div class="fw-bold"><?= array_sum(array_column($medalsStats, 'gold')) ?></div>
                                         <small class="text-muted">Золотых</small>
                                     </div>
-                                    <div class="col-md-4">
-                                        <div class="silver fs-4"><i class="bi bi-award"></i></div>
+                                    <div class="col-4">
+                                        <div class="silver"><i class="bi bi-award"></i></div>
                                         <div class="fw-bold"><?= array_sum(array_column($medalsStats, 'silver')) ?></div>
                                         <small class="text-muted">Серебряных</small>
                                     </div>
-                                    <div class="col-md-4">
-                                        <div class="bronze fs-4"><i class="bi bi-award"></i></div>
+                                    <div class="col-4">
+                                        <div class="bronze"><i class="bi bi-award"></i></div>
                                         <div class="fw-bold"><?= array_sum(array_column($medalsStats, 'bronze')) ?></div>
                                         <small class="text-muted">Бронзовых</small>
                                     </div>
                                 </div>
                             <?php else: ?>
-                                <p class="text-muted">Статистика медалей будет доступна после заполнения результатов</p>
+                                <p class="text-muted mb-0">Статистика медалей будет доступна после заполнения результатов</p>
                             <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="card h-100">
+                        <div class="card-header bg-info text-white">
+                            <h5 class="mb-0"><i class="bi bi-graph-up"></i> Сводка результатов</h5>
+                        </div>
+                        <div class="card-body">
+                            <?php
+                                $totalGold = array_sum(array_column($medalsStats, 'gold'));
+                                $totalSilver = array_sum(array_column($medalsStats, 'silver'));
+                                $totalBronze = array_sum(array_column($medalsStats, 'bronze'));
+                                $totalMedals = $totalGold + $totalSilver + $totalBronze;
+                                $disciplinesCnt = count($medalsStats);
+                                $withResultsCnt = 0;
+                                foreach ($medalsStats as $s) { if (($s['total'] ?? 0) > 0) $withResultsCnt++; }
+                                $avgPerDiscipline = $disciplinesCnt ? round($totalMedals / $disciplinesCnt, 1) : 0;
+                                $goldPct = $totalMedals ? round($totalGold * 100 / $totalMedals) : 0;
+                                $silverPct = $totalMedals ? round($totalSilver * 100 / $totalMedals) : 0;
+                                $bronzePct = $totalMedals ? round($totalBronze * 100 / $totalMedals) : 0;
+                            ?>
+                            <div class="row text-center g-3">
+                                <div class="col-4">
+                                    <div class="border rounded p-2 h-100">
+                                        <div class="small text-muted">Всего медалей</div>
+                                        <div class="display-6"><?= $totalMedals ?></div>
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="border rounded p-2 h-100">
+                                        <div class="small text-muted">Дисциплин с медалями</div>
+                                        <div class="display-6"><?= $withResultsCnt ?></div>
+                                        <div class="small text-muted">из <?= $disciplinesCnt ?></div>
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="border rounded p-2 h-100">
+                                        <div class="small text-muted">Сред. на дисциплину</div>
+                                        <div class="display-6"><?= $avgPerDiscipline ?></div>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <div class="small text-muted mb-1">Доли медалей</div>
+                                    <div class="progress" style="height: 18px;">
+                                        <div class="progress-bar" role="progressbar" style="width: <?= $goldPct ?>%; background-color:#FFD700; color:#000;" aria-valuenow="<?= $goldPct ?>" aria-valuemin="0" aria-valuemax="100"><?= $goldPct ?>%</div>
+                                        <div class="progress-bar bg-secondary" role="progressbar" style="width: <?= $silverPct ?>%;" aria-valuenow="<?= $silverPct ?>" aria-valuemin="0" aria-valuemax="100"><?= $silverPct ?>%</div>
+                                        <div class="progress-bar" role="progressbar" style="width: <?= $bronzePct ?>%; background-color:#CD7F32;" aria-valuenow="<?= $bronzePct ?>" aria-valuemin="0" aria-valuemax="100"><?= $bronzePct ?>%</div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -275,8 +362,23 @@ $pageTitle = 'Завершение мероприятия';
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script>
         const eventId = <?= $eventId ?>;
+        // При загрузке страницы запускаем генерацию файла технических результатов
+        (async () => {
+            try {
+                const resp = await fetch('/lks/php/secretary/generate_technical_results.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ champn: eventId })
+                });
+                if (!resp.ok) {
+                    // Тихий фолбэк: не мешаем странице, просто логируем
+                    console.warn('technical results generation failed', resp.status);
+                }
+            } catch (e) { /* no-op */ }
+        })();
         
         // Скачивание итогового протокола
         async function downloadFinalProtocol() {
@@ -374,6 +476,70 @@ $pageTitle = 'Завершение мероприятия';
                 alert('Ошибка завершения мероприятия');
             }
         }
+
+        // Рисуем диаграмму по медалям, если данные есть в DOM (значения считаем с сервера)
+        document.addEventListener('DOMContentLoaded', () => {
+            const goldEl = document.querySelector('.card .gold ~ .fw-bold');
+            const silverEl = document.querySelector('.card .silver ~ .fw-bold');
+            const bronzeEl = document.querySelector('.card .bronze ~ .fw-bold');
+            if (!goldEl || !silverEl || !bronzeEl) return;
+            const gold = parseInt(goldEl.textContent || '0', 10) || 0;
+            const silver = parseInt(silverEl.textContent || '0', 10) || 0;
+            const bronze = parseInt(bronzeEl.textContent || '0', 10) || 0;
+            const ctx = document.getElementById('medalChart');
+            if (!ctx) return;
+            // eslint-disable-next-line no-undef
+            new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: ['Золото', 'Серебро', 'Бронза'],
+                    datasets: [{
+                        data: [gold, silver, bronze],
+                        backgroundColor: ['#FFD700', '#C0C0C0', '#CD7F32']
+                    }]
+                },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false,
+                    plugins: { 
+                        legend: { position: 'bottom', labels: { color: '#495057' } },
+                        title: { display: false }
+                    }
+                }
+            });
+
+            // Инициализация состояния стрелок подменю в сайдбаре при загрузке
+            document.querySelectorAll('.sidebar .nav-link[href^="#submenu-"]').forEach(link => {
+                const href = link.getAttribute('href');
+                const submenu = document.querySelector(href);
+                const arrow = link.querySelector('.submenu-arrow');
+                if (!submenu || !arrow) return;
+                const shouldOpen = link.getAttribute('aria-expanded') === 'true' || !!submenu.querySelector('.nav-link.active');
+                submenu.style.setProperty('display', shouldOpen ? 'block' : 'none', 'important');
+                arrow.classList.remove('bi-chevron-right', 'bi-chevron-down');
+                arrow.classList.add(shouldOpen ? 'bi-chevron-down' : 'bi-chevron-right');
+            });
+
+            // Перехватываем клики по пунктам меню с подменю и не меняем URL (якоря)
+            document.addEventListener('click', function(e) {
+                const link = e.target.closest('a.nav-link');
+                if (!link) return;
+                const href = link.getAttribute('href') || '';
+                if (!href.startsWith('#submenu-')) return;
+                e.preventDefault();
+                const submenu = document.querySelector(href);
+                if (!submenu) return;
+                const isExpanded = link.getAttribute('aria-expanded') === 'true';
+                const willOpen = !isExpanded;
+                submenu.style.setProperty('display', willOpen ? 'block' : 'none', 'important');
+                link.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+                const arrow = link.querySelector('.submenu-arrow');
+                if (arrow) {
+                    arrow.classList.remove('bi-chevron-right', 'bi-chevron-down');
+                    arrow.classList.add(willOpen ? 'bi-chevron-down' : 'bi-chevron-right');
+                }
+            });
+        });
     </script>
 </body>
 </html> 

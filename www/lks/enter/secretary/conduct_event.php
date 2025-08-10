@@ -1,7 +1,7 @@
 <?php
 session_start();
-require_once $_SERVER['DOCUMENT_ROOT'] . '/lks/php/common/Auth.php';
-require_once $_SERVER['DOCUMENT_ROOT'] . '/lks/php/db/Database.php';
+require_once __DIR__ . '/../../php/common/Auth.php';
+require_once __DIR__ . '/../../php/db/Database.php';
 
 // Проверка авторизации и прав доступа
 $auth = new Auth();

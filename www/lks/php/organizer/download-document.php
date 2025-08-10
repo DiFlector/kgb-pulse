@@ -82,8 +82,8 @@ try {
         throw new Exception('Документ не загружен');
     }
     
-    // Полный путь к файлу
-    $fullPath = $_SERVER['DOCUMENT_ROOT'] . $filePath;
+    // Полный путь к файлу (относительно каталога lks)
+    $fullPath = dirname(__DIR__, 2) . '/' . ltrim($filePath, '/');
     
     if (!file_exists($fullPath)) {
         throw new Exception('Файл не найден на сервере');

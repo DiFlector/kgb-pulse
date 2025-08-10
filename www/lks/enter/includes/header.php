@@ -22,7 +22,8 @@ $roleTranslations = [
     'Admin' => 'Администратор',
     'Organizer' => 'Организатор', 
     'Secretary' => 'Секретарь',
-    'Sportsman' => 'Спортсмен'
+    'Sportsman' => 'Спортсмен',
+    'SuperUser' => 'Суперпользователь'
 ];
 $roleTitle = $roleTranslations[$user_role] ?? $user_role;
 
@@ -38,8 +39,8 @@ $isSuperUser = $auth->isSuperUser();
     <title><?= htmlspecialchars($pageTitle ?? 'KGB-Pulse') ?></title>
     
     <!-- Favicon -->
-    <link rel="icon" type="image/x-icon" href="/lks/favicon.ico">
-    <link rel="shortcut icon" type="image/x-icon" href="/lks/favicon.ico">
+    <link rel="icon" type="image/x-icon" href="/lks/favicon.ico?v=2">
+    <link rel="shortcut icon" type="image/x-icon" href="/lks/favicon.ico?v=2">
     
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -57,6 +58,9 @@ $isSuperUser = $auth->isSuperUser();
     
     <!-- Modal backdrop fix (временно отключен для отладки) -->
     <!-- <script src="/lks/js/modal-fix.js"></script> -->
+
+    <!-- jQuery (нужен для страниц, где inline-скрипты используют $ до футера) -->
+    <script src="/lks/js/libs/jquery/jquery-3.7.1.min.js"></script>
     
     <?php if (isset($additionalCSS)): ?>
         <?php foreach ($additionalCSS as $css): ?>
@@ -146,7 +150,11 @@ $isSuperUser = $auth->isSuperUser();
             $auth = new Auth();
             $isSuperUser = $auth->isSuperUser();
             
-            if ($isSuperUser) {
+            // Отладочная информация
+            error_log("DEBUG: user_role = " . $user_role . ", isSuperUser = " . ($isSuperUser ? 'true' : 'false'));
+            
+            if ($isSuperUser || $user_role === 'SuperUser') {
+                error_log("DEBUG: Using SuperUser menu");
                 // Многоуровневое меню для суперпользователя
                 $menu = [
                     [
@@ -198,6 +206,7 @@ $isSuperUser = $auth->isSuperUser();
                     ]
                 ];
             } else {
+                error_log("DEBUG: Using regular menu for user_role: " . $user_role);
                 switch ($user_role) {
                     case 'Admin':
                     $menu = [
@@ -234,7 +243,15 @@ $isSuperUser = $auth->isSuperUser();
                     ];
                     break;
                     
+                case 'SuperUser':
+                    // SuperUser использует многоуровневое меню, определенное выше
+                    // Этот case добавлен для полноты, но не используется
+                    error_log("DEBUG: SuperUser case reached in switch - this should not happen");
+                    // Не устанавливаем меню здесь, так как SuperUser использует многоуровневое меню
+                    break;
+                    
                 default: // Sportsman
+                    error_log("DEBUG: Using default menu (Sportsman) for user_role: " . $user_role);
                     $menu = [
                         ['href' => '/lks/enter/user/', 'icon' => 'bi bi-house', 'title' => 'Главная'],
                         ['href' => '/lks/enter/user/calendar.php', 'icon' => 'bi bi-calendar3', 'title' => 'Календарь'],
@@ -335,7 +352,12 @@ $isSuperUser = $auth->isSuperUser();
 
         <?php if (isset($pageHeader)): ?>
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h1 class="h3 mb-0"><?= htmlspecialchars($pageHeader) ?></h1>
+                <h1 class="h3 mb-0">
+                    <?php if (isset($pageIcon)): ?>
+                        <i class="<?= htmlspecialchars($pageIcon) ?> me-2"></i>
+                    <?php endif; ?>
+                    <?= htmlspecialchars($pageHeader) ?>
+                </h1>
                 <?php if (isset($pageActions)): ?>
                     <div class="d-flex gap-2">
                         <?= $pageActions ?>

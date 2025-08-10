@@ -137,11 +137,32 @@ try {
                     }
                 }
                 
+                // Проверяем, заполнен ли финишный протокол полностью
+                $isComplete = true;
+                if (!isset($data['participants']) || count($data['participants']) === 0) {
+                    $isComplete = false;
+                } else {
+                    foreach ($data['participants'] as &$p) {
+                        if (empty($p['place']) || empty($p['finishTime'])) {
+                            $isComplete = false;
+                            break;
+                        }
+                    }
+                }
+                
+                // Если финишный протокол полностью заполнен — защищаем данные
+                if ($isComplete) {
+                    foreach ($data['participants'] as &$p) {
+                        $p['protected'] = true;
+                    }
+                    $data['protected'] = true;
+                }
+                
                 // Обновляем время изменения
                 $data['updated_at'] = date('Y-m-d H:i:s');
                 
-                // Сохраняем обновленный протокол
-                $protocolManager->updateProtocol($redisKey, $data);
+                // Сохраняем обновленный протокол (передаем protected, если установлен)
+                $protocolManager->updateProtocol($redisKey, $data, $data['protected'] ?? false);
                 
                 error_log("✅ [UPDATE_PARTICIPANT_DATA] JSON протокол обновлен: $redisKey");
             } else {

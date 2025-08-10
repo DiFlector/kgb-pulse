@@ -1,20 +1,26 @@
 # Конфигурация cron для системы KGB-Pulse
 # Все задачи выполняются в московском времени (MSK)
 
-# Мониторинг системы каждые 5 минут
-*/5 * * * * php /var/www/html/scripts/monitor_system.php
+# Мониторинг системы 4 раза в день: 01:00, 07:00, 13:00, 19:00
+0 1 * * * php /var/www/html/scripts/monitor_system.php
+0 7 * * * php /var/www/html/scripts/monitor_system.php
+0 13 * * * php /var/www/html/scripts/monitor_system.php
+0 19 * * * php /var/www/html/scripts/monitor_system.php
 
-# Автоматическое закрытие регистрации каждый час
-0 * * * * php /var/www/html/scripts/auto_close_registration.php
+# Автоматическое открытие/закрытие регистрации ежедневно в 00:20
+20 0 * * * php /var/www/html/scripts/auto_close_registration.php
 
-# Автоматическая отметка неявки каждые 30 минут
-*/30 * * * * php /var/www/html/scripts/auto_mark_no_show.php
+# Автоматическая отметка неявки ежедневно в 00:30
+30 0 * * * php /var/www/html/scripts/auto_mark_no_show.php
+
+# Автофинализация ежедневно в 00:40
+40 0 * * * php /var/www/html/scripts/auto_finalize_results.php
 
 # Резервное копирование базы данных ежедневно в 02:00
 0 2 * * * /var/www/html/scripts/backup_database.sh
 
-# Проверка безопасности ежедневно в 03:00
-0 3 * * * php /var/www/html/scripts/security_check.php
+# Проверка безопасности в 03:00, 08:00, 15:00, 20:00
+0 3,8,15,20 * * * php /var/www/html/scripts/security_check.php
 
 # Очистка старых данных ежедневно в 05:00
 0 5 * * * php /var/www/html/scripts/cleanup_old_data.php

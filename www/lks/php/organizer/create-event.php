@@ -147,8 +147,8 @@ try {
         // Обработка файла положения
         $documentPath = null;
         if (isset($_FILES['document']) && $_FILES['document']['error'] === UPLOAD_ERR_OK) {
-            // Директория для загрузки
-            $uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/lks/files/polojenia/';
+            // Директория для загрузки (используем путь относительно корня проекта lks)
+            $uploadDir = dirname(__DIR__, 2) . '/files/polojenia/';
             
             // Проверяем и создаем директорию
             if (!is_dir($uploadDir)) {
@@ -228,7 +228,7 @@ try {
             if ($removeDocument === '1') {
                 // Удаляем старый файл с диска
                 if (!empty($existingEvent['filepolojenie'])) {
-                    $oldFilePath = $_SERVER['DOCUMENT_ROOT'] . '/lks/' . $existingEvent['filepolojenie'];
+                    $oldFilePath = dirname(__DIR__, 2) . '/' . ltrim($existingEvent['filepolojenie'], '/');
                     if (file_exists($oldFilePath)) {
                         unlink($oldFilePath);
                         error_log("Удален старый файл: " . $oldFilePath);
@@ -238,7 +238,7 @@ try {
             } elseif ($documentPath) {
                 // Удаляем старый файл при замене
                 if (!empty($existingEvent['filepolojenie'])) {
-                    $oldFilePath = $_SERVER['DOCUMENT_ROOT'] . '/lks/' . $existingEvent['filepolojenie'];
+                    $oldFilePath = dirname(__DIR__, 2) . '/' . ltrim($existingEvent['filepolojenie'], '/');
                     if (file_exists($oldFilePath)) {
                         unlink($oldFilePath);
                         error_log("Заменен старый файл: " . $oldFilePath);

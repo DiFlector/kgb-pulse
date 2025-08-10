@@ -227,7 +227,7 @@ $pageTitle = 'Выбор дисциплин для жеребьевки';
                             <div class="row g-2">
                                 <?php foreach ($soloBoats as $discipline): ?>
                                     <div class="col-md-3 col-sm-4 col-6">
-                                        <div class="form-check d-flex align-items-center border rounded p-3 h-100 discipline-item">
+                                        <div class="form-check d-flex align-items-center border rounded p-3 h-100 discipline-item" id="disc_<?= $discipline['class'] ?>_<?= $discipline['sex'] ?>_<?= $discipline['distance'] ?>">
                                             <input class="form-check-input me-3" type="checkbox" 
                                                    id="discipline_<?= $discipline['class'] ?>_<?= $discipline['sex'] ?>_<?= $discipline['distance'] ?>"
                                                    data-class="<?= $discipline['class'] ?>" 
@@ -254,7 +254,7 @@ $pageTitle = 'Выбор дисциплин для жеребьевки';
                             <div class="row g-2">
                                 <?php foreach ($groupBoats as $discipline): ?>
                                     <div class="col-md-3 col-sm-4 col-6">
-                                        <div class="form-check d-flex align-items-center border rounded p-3 h-100 discipline-item">
+                                        <div class="form-check d-flex align-items-center border rounded p-3 h-100 discipline-item" id="disc_<?= $discipline['class'] ?>_<?= $discipline['sex'] ?>_<?= $discipline['distance'] ?>">
                                             <input class="form-check-input me-3" type="checkbox" 
                                                    id="discipline_<?= $discipline['class'] ?>_<?= $discipline['sex'] ?>_<?= $discipline['distance'] ?>"
                                                    data-class="<?= $discipline['class'] ?>" 
@@ -281,7 +281,7 @@ $pageTitle = 'Выбор дисциплин для жеребьевки';
                             <div class="row g-2">
                                 <?php foreach ($dragonBoats as $discipline): ?>
                                     <div class="col-md-3 col-sm-4 col-6">
-                                        <div class="form-check d-flex align-items-center border rounded p-3 h-100 discipline-item">
+                                        <div class="form-check d-flex align-items-center border rounded p-3 h-100 discipline-item" id="disc_<?= $discipline['class'] ?>_<?= $discipline['sex'] ?>_<?= $discipline['distance'] ?>">
                                             <input class="form-check-input me-3" type="checkbox" 
                                                    id="discipline_<?= $discipline['class'] ?>_<?= $discipline['sex'] ?>_<?= $discipline['distance'] ?>"
                                                    data-class="<?= $discipline['class'] ?>" 
@@ -309,29 +309,16 @@ $pageTitle = 'Выбор дисциплин для жеребьевки';
                                 <i class="bi bi-x-circle"></i> Очистить все
                             </button>
                         </div>
-                        
-                        <button type="button" class="btn btn-success btn-lg" id="proceedBtn" onclick="createProtocols()" disabled>
-                            <i class="bi bi-arrow-right-circle"></i> 
-                            Создать протоколы (<span id="proceedCount">0</span>)
-                        </button>
-                    </div>
-                    
-                    <!-- Статус заполненности дисциплин -->
-                    <div id="disciplinesStatus" class="mt-4" style="display: none;">
-                        <div class="card">
-                            <div class="card-header bg-info text-white">
-                                <h5 class="mb-0">
-                                    <i class="bi bi-info-circle"></i> Статус заполненности дисциплин
-                                </h5>
-                            </div>
-                            <div class="card-body">
-                                <div id="statusContent"></div>
-                                <div class="mt-3">
-                                    <button type="button" class="btn btn-primary btn-lg" id="completeEventBtn" onclick="completeEvent()" style="display: none;">
-                                        <i class="bi bi-flag-checkered"></i> Завершить мероприятие
-                                    </button>
-                                </div>
-                            </div>
+
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-success btn-lg" id="proceedBtn" onclick="createProtocols()" disabled>
+                                <i class="bi bi-arrow-right-circle"></i> 
+                                Создать протоколы (<span id="proceedCount">0</span>)
+                            </button>
+                            <button type="button" class="btn btn-outline-success btn-lg ms-2" id="finishEventBtn" onclick="completeEvent()" disabled title="Кнопка заблокирована, пока все протоколы не будут заполнены">
+                                <i class="bi bi-flag-checkered"></i>
+                                Завершить мероприятие
+                            </button>
                         </div>
                     </div>
                     
@@ -605,6 +592,55 @@ $pageTitle = 'Выбор дисциплин для жеребьевки';
             }
         }
 
+        // Подсветка дисциплин по статусу заполненности
+        async function highlightDisciplinesByStatus() {
+            try {
+                const response = await fetch('/lks/php/secretary/get_disciplines_status.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ meroId: eventId })
+                });
+                const data = await response.json();
+                if (!data.success) return;
+                // вспомогательная функция для перебора вариантов пола (EN/RU)
+                const sexVariants = (sex) => {
+                    const variants = new Set([sex]);
+                    if (sex === 'M') variants.add('М');
+                    if (sex === 'W') variants.add('Ж');
+                    if (sex === 'М') variants.add('M');
+                    if (sex === 'Ж') variants.add('W');
+                    return Array.from(variants);
+                };
+
+                let allCompleted = true;
+                (data.disciplinesStatus || []).forEach(item => {
+                    let el = null;
+                    // пробуем найти карточку по всем вариантам обозначения пола
+                    for (const sex of sexVariants(item.sex)) {
+                        const id = `disc_${item.class}_${sex}_${item.distance}`;
+                        el = document.getElementById(id);
+                        if (el) break;
+                    }
+                    if (!el) return;
+                    el.classList.remove('border-success','bg-light','border-warning','border-2');
+                    if (item.status === 'completed') {
+                        el.classList.add('border-success','bg-light','border-2');
+                    } else if (item.status === 'partial') {
+                        el.classList.add('border-warning','border-2');
+                        allCompleted = false;
+                    } else {
+                        allCompleted = false;
+                    }
+                });
+                // Включаем/выключаем кнопку завершения
+                const finishBtn = document.getElementById('finishEventBtn');
+                if (finishBtn) {
+                    finishBtn.disabled = !allCompleted;
+                    finishBtn.title = allCompleted ? '' : 'Кнопка заблокирована, пока все протоколы не будут заполнены';
+                }
+            } catch (e) { /* ignore */ }
+        }
+
         // Инициализация при загрузке страницы
         document.addEventListener('DOMContentLoaded', function() {
             updateSelectedCount();
@@ -613,6 +649,8 @@ $pageTitle = 'Выбор дисциплин для жеребьевки';
             if (selectedDisciplines.length > 0) {
                 loadDisciplinesStatus();
             }
+            // Подсветка по текущему статусу заполненности
+            highlightDisciplinesByStatus();
             
             // Проверяем, что все функции доступны
             console.log('Функции загружены:', {
@@ -623,6 +661,53 @@ $pageTitle = 'Выбор дисциплин для жеребьевки';
                 loadDisciplinesStatus: typeof loadDisciplinesStatus,
                 displayDisciplinesStatus: typeof displayDisciplinesStatus
             });
+        });
+
+        // Инициализация состояния стрелок подменю в сайдбаре при загрузке
+        document.addEventListener('DOMContentLoaded', function() {
+            // для ссылок верхнего уровня с подменю устанавливаем корректное положение стрелки
+            document.querySelectorAll('.sidebar .nav-link[href^="#submenu-"]').forEach(link => {
+                const href = link.getAttribute('href');
+                const submenu = document.querySelector(href);
+                const arrow = link.querySelector('.submenu-arrow');
+                if (!submenu || !arrow) return;
+
+                // открываем подменю, если aria-expanded=true или внутри есть активный пункт
+                const shouldOpen = link.getAttribute('aria-expanded') === 'true' || !!submenu.querySelector('.nav-link.active');
+                submenu.style.setProperty('display', shouldOpen ? 'block' : 'none', 'important');
+
+                arrow.classList.remove('bi-chevron-right', 'bi-chevron-down');
+                arrow.classList.add(shouldOpen ? 'bi-chevron-down' : 'bi-chevron-right');
+            });
+        });
+
+        // Обработка кликов по пунктам меню с подменю: предотвращаем изменение URL и раскрываем/сворачиваем блок
+        document.addEventListener('click', function(e) {
+            const link = e.target.closest('a.nav-link');
+            if (!link) return;
+            const href = link.getAttribute('href') || '';
+            if (!href.startsWith('#submenu-')) return;
+            // предотвращаем изменение якоря в адресной строке
+            e.preventDefault();
+            // находим соответствующий список подменю и переключаем видимость
+            const submenu = document.querySelector(href);
+            if (!submenu) return;
+            const isExpanded = link.getAttribute('aria-expanded') === 'true';
+
+            // если есть активный пункт, не закрываем подменю
+            if (isExpanded && submenu.querySelector('.nav-link.active')) {
+                return;
+            }
+
+            const willOpen = !isExpanded;
+            submenu.style.setProperty('display', willOpen ? 'block' : 'none', 'important');
+            link.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+            // обновляем стрелку
+            const arrow = link.querySelector('.submenu-arrow');
+            if (arrow) {
+                arrow.classList.remove('bi-chevron-right', 'bi-chevron-down');
+                arrow.classList.add(willOpen ? 'bi-chevron-down' : 'bi-chevron-right');
+            }
         });
     </script>
 </body>

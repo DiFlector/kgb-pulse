@@ -29,14 +29,14 @@ try {
     $currentTime = date('Y-m-d H:i:s');
     logMessage("Текущее время: {$currentTime}");
     
-    // Находим мероприятия, которые начались более 30 минут назад
-    // и участников со статусами, которые можно отметить как неявка
+    // Находим мероприятия, которые уже стартовали
+    // Условие задачи: на следующий день после начала мероприятия
     $query = "
         SELECT DISTINCT m.oid as meros_oid, m.champn, m.meroname, m.merodata, m.status::text as status
         FROM meros m
         INNER JOIN listreg l ON m.oid = l.meros_oid
-        WHERE TRIM(m.status::text) IN ('Регистрация закрыта', 'В процессе', 'Результаты')
-        AND TRIM(l.status::text) IN ('В очереди', 'Подтверждён', 'Ожидание команды')
+        WHERE TRIM(m.status::text) IN ('Регистрация закрыта', 'Результаты', 'Завершено')
+        AND TRIM(l.status::text) IN ('В очереди', 'Ожидание команды')
         AND m.merodata IS NOT NULL
         AND m.merodata != ''
     ";
@@ -56,18 +56,23 @@ try {
                 continue;
             }
             
-            // Проверяем, прошло ли 30 минут после начала мероприятия
-            $eventStartTime = strtotime($eventDate);
-            $markTime = $eventStartTime + 1800; // 30 минут после начала
-            $currentTimestamp = time();
-            
-            if ($currentTimestamp >= $markTime) {
+            // На следующий день после начала мероприятия
+            $startDt = getEventStartDate($event['merodata']);
+            if (!$startDt) {
+                logMessage("Не удалось определить дату начала для {$event['champn']}");
+                continue;
+            }
+
+            $markDt = (clone $startDt)->modify('+1 day')->setTime(0, 0, 0);
+            $now = new DateTime('now', new DateTimeZone('Europe/Moscow'));
+
+            if ($now >= $markDt) {
                 // Отмечаем участников как неявившихся
                 $updateQuery = "
                     UPDATE listreg 
                     SET status = 'Неявка'::statuses
                     WHERE meros_oid = ? 
-                    AND TRIM(status::text) IN ('В очереди', 'Подтверждён', 'Ожидание команды')
+                    AND TRIM(status::text) IN ('В очереди', 'Ожидание команды')
                 ";
                 
                 $result = $db->execute($updateQuery, [$event['meros_oid']]);

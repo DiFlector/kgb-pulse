@@ -2,7 +2,7 @@
 require_once '../../php/common/Auth.php';
 
 $auth = new Auth();
-if (!$auth->isAuthenticated() || !in_array($auth->getUserRole(), ['Organizer', 'SuperUser'])) {
+if (!$auth->isAuthenticated() || !in_array($auth->getUserRole(), ['Admin', 'SuperUser'])) {
     header('Location: ../../login.php');
     exit;
 }
@@ -19,8 +19,8 @@ if (!$oid) {
     exit;
 }
 
-// Проверяем права доступа (организатор может редактировать только ожидающие регистрации)
-$hasFullAccess = in_array($userRole, ['Organizer', 'SuperUser']);
+// Проверяем права доступа (администратор имеет полные права)
+$hasFullAccess = in_array($userRole, ['Admin', 'SuperUser']);
 ?>
 
 <!DOCTYPE html>
@@ -28,7 +28,7 @@ $hasFullAccess = in_array($userRole, ['Organizer', 'SuperUser']);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Редактирование регистрации - Панель организатора</title>
+    <title>Редактирование регистрации - Панель администратора</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
     <link href="../../css/style.css" rel="stylesheet">
@@ -74,7 +74,7 @@ $hasFullAccess = in_array($userRole, ['Organizer', 'SuperUser']);
     </style>
 </head>
 <body>
-    <?php include '../../includes/header.php'; ?>
+    <?php include '../includes/header.php'; ?>
 
     <!-- Заголовок страницы -->
     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
@@ -153,6 +153,7 @@ $hasFullAccess = in_array($userRole, ['Organizer', 'SuperUser']);
                                         <option value="">Выберите статус</option>
                                         <option value="В очереди">В очереди</option>
                                         <option value="Подтверждён">Подтверждён</option>
+                                        <option value="Зарегистрирован">Зарегистрирован</option>
                                         <option value="Ожидание команды">Ожидание команды</option>
                                         <option value="Дисквалифицирован">Дисквалифицирован</option>
                                         <option value="Неявка">Неявка</option>
@@ -174,8 +175,8 @@ $hasFullAccess = in_array($userRole, ['Organizer', 'SuperUser']);
                                     <input class="form-check-input payment-switch" type="checkbox" id="oplata" name="oplata">
                                     <label class="form-check-label" for="oplata">
                                         <span id="oplataLabel">Оплачено</span>
-                                        <small class="text-muted d-block" id="oplataHint" style="display: none;">
-                                            Организатор может только включать оплату
+                                        <small class="text-muted d-block" id="oplataHint">
+                                            Администратор может включать и отключать оплату
                                         </small>
                                     </label>
                                 </div>
@@ -267,7 +268,7 @@ $hasFullAccess = in_array($userRole, ['Organizer', 'SuperUser']);
                 document.getElementById('errorInfo').style.display = 'none';
                 
                 // Используем новый API с параметром id
-                const response = await fetch(`/lks/php/organizer/get_registration.php?id=${oid}`);
+                const response = await fetch(`/lks/php/admin/get_registration.php?id=${oid}`);
                 const data = await response.json();
                 
                 if (data.success) {
@@ -535,7 +536,7 @@ $hasFullAccess = in_array($userRole, ['Organizer', 'SuperUser']);
             try {
                 document.getElementById('loadingOverlay').style.display = 'flex';
                 
-                const response = await fetch('/lks/php/organizer/update_registration.php', {
+                const response = await fetch('/lks/php/admin/update_registration.php', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -600,6 +601,6 @@ $hasFullAccess = in_array($userRole, ['Organizer', 'SuperUser']);
         }
     </script>
 
-    <?php include '../../includes/footer.php'; ?>
+    <?php include '../includes/footer.php'; ?>
 </body>
 </html> 

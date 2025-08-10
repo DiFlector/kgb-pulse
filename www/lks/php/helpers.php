@@ -115,10 +115,10 @@ function getBoatTypesFromDB() {
             $boatTypes = [
                 'D-10' => 'Дракон (10 человек)',
                 'K-1' => 'Байдарка одиночка',
-                'K-2' => 'Байдарка двойка',
-                'K-4' => 'Байдарка четверка',
                 'C-1' => 'Каноэ одиночка',
+                'K-2' => 'Байдарка двойка',
                 'C-2' => 'Каноэ двойка',
+                'K-4' => 'Байдарка четверка',
                 'C-4' => 'Каноэ четверка',
                 'H-1' => 'Жесткие доски одиночка',
                 'H-2' => 'Жесткие доски двойка',
@@ -1249,6 +1249,290 @@ function isValidEventDate($merodata) {
  */
 function createEventDate($date, $year) {
     return trim($date . ' ' . $year);
+}
+
+/**
+ * Возвращает дату начала мероприятия из поля merodata
+ * Поддерживаемые форматы примеров:
+ * - "12 - 15 августа 2025"
+ * - "31 августа - 2 сентября 2025"
+ * - "10 июня - 12 июня 2025"
+ * - "16 августа 2025"
+ * - а также JSON вида {"start":"2025-08-12","end":"2025-08-15"}
+ * @param string $merodata
+ * @return DateTime|null
+ */
+function getEventStartDate($merodata) {
+    if (empty($merodata)) {
+        return null;
+    }
+
+    // Если дата хранится в JSON
+    $asJson = json_decode($merodata, true);
+    if (is_array($asJson)) {
+        if (!empty($asJson['start'])) {
+            try {
+                return new DateTime($asJson['start'], new DateTimeZone('Europe/Moscow'));
+            } catch (Exception $e) {
+                // ignore
+            }
+        }
+        // Падаем дальше на парсинг текста, если не удалось
+    }
+
+    $months = [
+        'января' => '01', 'февраля' => '02', 'марта' => '03', 'апреля' => '04',
+        'мая' => '05', 'июня' => '06', 'июля' => '07', 'августа' => '08',
+        'сентября' => '09', 'октября' => '10', 'ноября' => '11', 'декабря' => '12',
+        'янв' => '01', 'фев' => '02', 'мар' => '03', 'апр' => '04',
+        'май' => '05', 'июн' => '06', 'июл' => '07', 'авг' => '08',
+        'сен' => '09', 'окт' => '10', 'ноя' => '11', 'дек' => '12'
+    ];
+
+    // Извлекаем год (по умолчанию текущий)
+    $year = null;
+    if (preg_match('/\b(\d{4})\b/u', $merodata, $ym)) {
+        $year = $ym[1];
+    } else {
+        $year = date('Y');
+    }
+
+    $text = trim($merodata);
+    $text = preg_replace('/\s*года?\.?$/u', '', $text);
+
+    // 1) "d - d month year" (один месяц)
+    if (preg_match('/^(\d{1,2})\s*[-–]\s*(\d{1,2})\s+([А-Яа-яё]+)\s+(\d{4})$/u', $text, $m)) {
+        $dayStart = (int)$m[1];
+        $monthName = mb_strtolower($m[3]);
+        $yr = $m[4];
+        if (isset($months[$monthName])) {
+            $month = $months[$monthName];
+            try {
+                return new DateTime("{$yr}-{$month}-" . sprintf('%02d', $dayStart), new DateTimeZone('Europe/Moscow'));
+            } catch (Exception $e) { return null; }
+        }
+    }
+
+    // 2) "d month - d month year" (разные месяцы)
+    if (preg_match('/^(\d{1,2})\s+([А-Яа-яё]+)\s*[-–]\s*(\d{1,2})\s+([А-Яа-яё]+)\s+(\d{4})$/u', $text, $m)) {
+        $dayStart = (int)$m[1];
+        $monthNameStart = mb_strtolower($m[2]);
+        $yr = $m[5];
+        if (isset($months[$monthNameStart])) {
+            $month = $months[$monthNameStart];
+            try {
+                return new DateTime("{$yr}-{$month}-" . sprintf('%02d', $dayStart), new DateTimeZone('Europe/Moscow'));
+            } catch (Exception $e) { return null; }
+        }
+    }
+
+    // 3) "d month - d month" + год отдельно в конце строки (редкий случай)
+    if (preg_match('/^(\d{1,2})\s+([А-Яа-яё]+)\s*[-–]\s*(\d{1,2})\s+([А-Яа-яё]+)\s*$/u', $text, $m) && $year) {
+        $dayStart = (int)$m[1];
+        $monthNameStart = mb_strtolower($m[2]);
+        if (isset($months[$monthNameStart])) {
+            $month = $months[$monthNameStart];
+            try {
+                return new DateTime("{$year}-{$month}-" . sprintf('%02d', $dayStart), new DateTimeZone('Europe/Moscow'));
+            } catch (Exception $e) { return null; }
+        }
+    }
+
+    // 4) "d - d month" + год в конце (как в parseEventDate)
+    if (preg_match('/^(\d{1,2})\s*[-–]\s*(\d{1,2})\s+([А-Яа-яё]+)$/u', $text, $m) && $year) {
+        $dayStart = (int)$m[1];
+        $monthName = mb_strtolower($m[3]);
+        if (isset($months[$monthName])) {
+            $month = $months[$monthName];
+            try {
+                return new DateTime("{$year}-{$month}-" . sprintf('%02d', $dayStart), new DateTimeZone('Europe/Moscow'));
+            } catch (Exception $e) { return null; }
+        }
+    }
+
+    // 5) "d month year" (один день)
+    if (preg_match('/^(\d{1,2})\s+([А-Яа-яё]+)\s+(\d{4})$/u', $text, $m)) {
+        $day = (int)$m[1];
+        $monthName = mb_strtolower($m[2]);
+        $yr = $m[3];
+        if (isset($months[$monthName])) {
+            $month = $months[$monthName];
+            try {
+                return new DateTime("{$yr}-{$month}-" . sprintf('%02d', $day), new DateTimeZone('Europe/Moscow'));
+            } catch (Exception $e) { return null; }
+        }
+    }
+
+    // 6) "d month" + год отдельно
+    if (preg_match('/^(\d{1,2})\s+([А-Яа-яё]+)$/u', $text, $m) && $year) {
+        $day = (int)$m[1];
+        $monthName = mb_strtolower($m[2]);
+        if (isset($months[$monthName])) {
+            $month = $months[$monthName];
+            try {
+                return new DateTime("{$year}-{$month}-" . sprintf('%02d', $day), new DateTimeZone('Europe/Moscow'));
+            } catch (Exception $e) { return null; }
+        }
+    }
+
+    // Фоллбек: используем parseDateForTests/strtotime
+    $dt = parseDateForTests($text);
+    if ($dt instanceof DateTime) {
+        try { $dt->setTimezone(new DateTimeZone('Europe/Moscow')); } catch (Exception $e) {}
+        return $dt;
+    }
+
+    $timestamp = strtotime($text);
+    if ($timestamp !== false) {
+        try {
+            $dt = new DateTime('@' . $timestamp);
+            $dt->setTimezone(new DateTimeZone('Europe/Moscow'));
+            return $dt;
+        } catch (Exception $e) { return null; }
+    }
+
+    return null;
+}
+
+/**
+ * Возвращает дату окончания мероприятия из поля merodata
+ * Логика форматов аналогична getEventStartDate; если диапазон дат, берём правую дату,
+ * если один день — берём этот же день. Для JSON ожидается ключ 'end'.
+ * @param string $merodata
+ * @return DateTime|null
+ */
+function getEventEndDate($merodata) {
+    if (empty($merodata)) {
+        return null;
+    }
+
+    // Если дата хранится в JSON
+    $asJson = json_decode($merodata, true);
+    if (is_array($asJson)) {
+        if (!empty($asJson['end'])) {
+            try {
+                return new DateTime($asJson['end'], new DateTimeZone('Europe/Moscow'));
+            } catch (Exception $e) {
+                // ignore
+            }
+        } elseif (!empty($asJson['start'])) {
+            try {
+                return new DateTime($asJson['start'], new DateTimeZone('Europe/Moscow'));
+            } catch (Exception $e) {}
+        }
+    }
+
+    $months = [
+        'января' => '01', 'февраля' => '02', 'марта' => '03', 'апреля' => '04',
+        'мая' => '05', 'июня' => '06', 'июля' => '07', 'августа' => '08',
+        'сентября' => '09', 'октября' => '10', 'ноября' => '11', 'декабря' => '12',
+        'янв' => '01', 'фев' => '02', 'мар' => '03', 'апр' => '04',
+        'май' => '05', 'июн' => '06', 'июл' => '07', 'авг' => '08',
+        'сен' => '09', 'окт' => '10', 'ноя' => '11', 'дек' => '12'
+    ];
+
+    // Извлекаем год (по умолчанию текущий)
+    $year = null;
+    if (preg_match('/\b(\d{4})\b/u', $merodata, $ym)) {
+        $year = $ym[1];
+    } else {
+        $year = date('Y');
+    }
+
+    $text = trim($merodata);
+    $text = preg_replace('/\s*года?\.?$/u', '', $text);
+
+    // 1) "d - d month year" → правая дата
+    if (preg_match('/^(\d{1,2})\s*[-–]\s*(\d{1,2})\s+([А-Яа-яё]+)\s+(\d{4})$/u', $text, $m)) {
+        $dayEnd = (int)$m[2];
+        $monthName = mb_strtolower($m[3]);
+        $yr = $m[4];
+        if (isset($months[$monthName])) {
+            $month = $months[$monthName];
+            try {
+                return new DateTime("{$yr}-{$month}-" . sprintf('%02d', $dayEnd), new DateTimeZone('Europe/Moscow'));
+            } catch (Exception $e) { return null; }
+        }
+    }
+
+    // 2) "d month - d month year" → правая дата и месяц
+    if (preg_match('/^(\d{1,2})\s+([А-Яа-яё]+)\s*[-–]\s*(\d{1,2})\s+([А-Яа-яё]+)\s+(\d{4})$/u', $text, $m)) {
+        $dayEnd = (int)$m[3];
+        $monthNameEnd = mb_strtolower($m[4]);
+        $yr = $m[5];
+        if (isset($months[$monthNameEnd])) {
+            $month = $months[$monthNameEnd];
+            try {
+                return new DateTime("{$yr}-{$month}-" . sprintf('%02d', $dayEnd), new DateTimeZone('Europe/Moscow'));
+            } catch (Exception $e) { return null; }
+        }
+    }
+
+    // 3) "d month - d month" + год отдельно
+    if (preg_match('/^(\d{1,2})\s+([А-Яа-яё]+)\s*[-–]\s*(\d{1,2})\s+([А-Яа-яё]+)\s*$/u', $text, $m) && $year) {
+        $dayEnd = (int)$m[3];
+        $monthNameEnd = mb_strtolower($m[4]);
+        if (isset($months[$monthNameEnd])) {
+            $month = $months[$monthNameEnd];
+            try {
+                return new DateTime("{$year}-{$month}-" . sprintf('%02d', $dayEnd), new DateTimeZone('Europe/Moscow'));
+            } catch (Exception $e) { return null; }
+        }
+    }
+
+    // 4) "d - d month" + год в конце → правая дата
+    if (preg_match('/^(\d{1,2})\s*[-–]\s*(\d{1,2})\s+([А-Яа-яё]+)$/u', $text, $m) && $year) {
+        $dayEnd = (int)$m[2];
+        $monthName = mb_strtolower($m[3]);
+        if (isset($months[$monthName])) {
+            $month = $months[$monthName];
+            try {
+                return new DateTime("{$year}-{$month}-" . sprintf('%02d', $dayEnd), new DateTimeZone('Europe/Moscow'));
+            } catch (Exception $e) { return null; }
+        }
+    }
+
+    // 5) "d month year" (один день)
+    if (preg_match('/^(\d{1,2})\s+([А-Яа-яё]+)\s+(\d{4})$/u', $text, $m)) {
+        $day = (int)$m[1];
+        $monthName = mb_strtolower($m[2]);
+        $yr = $m[3];
+        if (isset($months[$monthName])) {
+            $month = $months[$monthName];
+            try {
+                return new DateTime("{$yr}-{$month}-" . sprintf('%02d', $day), new DateTimeZone('Europe/Moscow'));
+            } catch (Exception $e) { return null; }
+        }
+    }
+
+    // 6) "d month" + год отдельно
+    if (preg_match('/^(\d{1,2})\s+([А-Яа-яё]+)$/u', $text, $m) && $year) {
+        $day = (int)$m[1];
+        $monthName = mb_strtolower($m[2]);
+        if (isset($months[$monthName])) {
+            $month = $months[$monthName];
+            try {
+                return new DateTime("{$year}-{$month}-" . sprintf('%02d', $day), new DateTimeZone('Europe/Moscow'));
+            } catch (Exception $e) { return null; }
+        }
+    }
+
+    // Фоллбек
+    $dt = parseDateForTests($text);
+    if ($dt instanceof DateTime) {
+        try { $dt->setTimezone(new DateTimeZone('Europe/Moscow')); } catch (Exception $e) {}
+        return $dt;
+    }
+    $timestamp = strtotime($text);
+    if ($timestamp !== false) {
+        try {
+            $dt = new DateTime('@' . $timestamp);
+            $dt->setTimezone(new DateTimeZone('Europe/Moscow'));
+            return $dt;
+        } catch (Exception $e) { return null; }
+    }
+
+    return null;
 }
 
 /**

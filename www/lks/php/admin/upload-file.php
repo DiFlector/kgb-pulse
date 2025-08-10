@@ -54,7 +54,16 @@ try {
     // Создаем папку если не существует
     if (!is_dir($uploadDir)) {
         if (!mkdir($uploadDir, 0755, true)) {
-            throw new Exception('Не удалось создать папку');
+            throw new Exception('Не удалось создать папку назначения');
+        }
+    }
+
+    // Проверяем доступность на запись (мягкая проверка: не прерываем, а логируем)
+    if (!is_writable($uploadDir)) {
+        @chmod($uploadDir, 0775);
+        clearstatcache();
+        if (!is_writable($uploadDir)) {
+            error_log('Warning: upload dir is not writable by check: ' . $uploadDir);
         }
     }
 
@@ -86,12 +95,13 @@ try {
         $fileExtension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
         
         // Разрешенные расширения для каждой папки
+        // ВАЖНО: в шаблонах допускаем также csv (например, technical_results.csv)
         $allowedExtensions = [
             'excel' => ['xls', 'xlsx', 'csv'],
             'pdf' => ['pdf'],
             'results' => ['txt', 'json', 'xml', 'csv'],
             'protocol' => ['pdf', 'doc', 'docx'],
-            'template' => ['xls', 'xlsx'],
+            'template' => ['xls', 'xlsx', 'csv'],
             'polojenia' => ['pdf', 'doc', 'docx'],
             'sluzebnoe' => ['txt', 'log', 'json', 'xml']
         ];
@@ -136,22 +146,31 @@ try {
             // Логирование действия
             error_log("Admin uploaded file: $safeFileName to folder: $folder");
         } else {
-            $errors[] = "Не удалось сохранить файл: $fileName";
+            $lastError = error_get_last();
+            $reason = $lastError['message'] ?? 'неизвестная причина';
+            $errors[] = "Не удалось сохранить файл: $fileName (" . $reason . ")";
         }
     }
 
     // Формирование ответа
+    $uploadedCount = count($uploadedFiles);
     $response = [
-        'success' => true,
-        'uploaded' => count($uploadedFiles),
+        'uploaded' => $uploadedCount,
         'total' => $fileCount,
         'files' => $uploadedFiles
     ];
 
     if (!empty($errors)) {
         $response['errors'] = $errors;
-        $response['message'] = 'Загрузка завершена с ошибками';
+        if ($uploadedCount === 0) {
+            $response['success'] = false;
+            $response['message'] = 'Не удалось загрузить файлы';
+        } else {
+            $response['success'] = true;
+            $response['message'] = 'Частично загружено: ' . $uploadedCount . ' из ' . $fileCount;
+        }
     } else {
+        $response['success'] = true;
         $response['message'] = 'Все файлы успешно загружены';
     }
 

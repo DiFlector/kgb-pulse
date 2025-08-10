@@ -176,7 +176,7 @@ include '../includes/header.php';
                                 <span class="badge bg-info"><?= $event['registrations_count'] ?></span>
                             </div>
                             
-                            <!-- Классы, пол и дистанции -->
+                            <!-- Классы: дистанции, разделённые по полам (как у организатора) -->
                             <?php if (!empty($classData)): ?>
                             <div class="mb-3">
                                 <strong class="text-primary">Классы:</strong>
@@ -184,23 +184,46 @@ include '../includes/header.php';
                                     <?php foreach ($classData as $class => $details): ?>
                                     <div class="border rounded p-2 mb-2 bg-light">
                                         <strong class="text-dark"><?= htmlspecialchars($class) ?></strong>
-                                        
-                                        <!-- Пол -->
-                                        <?php if (isset($details['sex']) && is_array($details['sex'])): ?>
-                                        <div class="mt-1">
-                                            <small class="text-muted">Пол:</small>
-                                            <?php foreach ($details['sex'] as $sex): ?>
-                                                <span class="badge bg-info me-1"><?= htmlspecialchars($sex) ?></span>
-                                            <?php endforeach; ?>
-                                        </div>
-                                        <?php endif; ?>
-                                        
-                                        <!-- Дистанции -->
-                                        <?php if (isset($details['dist']) && is_array($details['dist'])): ?>
-                                        <div class="mt-1">
-                                            <small class="text-muted">Дистанции:</small><br>
-                                            <small><?= htmlspecialchars(implode(', ', $details['dist'])) ?></small>
-                                        </div>
+                                        <?php if (isset($details['sex']) && isset($details['dist']) && is_array($details['sex']) && is_array($details['dist'])): ?>
+                                            <div class="row mt-2">
+                                                <?php 
+                                                $sexCount = count($details['sex']);
+                                                $distCount = count($details['dist']);
+                                                for ($i = 0; $i < max($sexCount, $distCount); $i++):
+                                                    $sex = isset($details['sex'][$i]) ? $details['sex'][$i] : (isset($details['sex'][0]) ? $details['sex'][0] : 'М');
+                                                    $distances = '';
+                                                    if (isset($details['dist'][$i])) {
+                                                        if (is_array($details['dist'][$i])) {
+                                                            $distances = implode(', ', $details['dist'][$i]);
+                                                        } else {
+                                                            $distances = $details['dist'][$i];
+                                                        }
+                                                    }
+                                                ?>
+                                                <div class="col-12 col-md-6 mb-1">
+                                                    <div class="d-flex align-items-center">
+                                                        <span class="badge bg-<?= $sex === 'М' ? 'primary' : ($sex === 'Ж' ? 'danger' : 'secondary') ?> me-2" style="min-width: 25px;"><?= htmlspecialchars($sex) ?></span>
+                                                        <span class="text-muted small"><?= htmlspecialchars($distances) ?></span>
+                                                    </div>
+                                                </div>
+                                                <?php endfor; ?>
+                                            </div>
+                                        <?php else: ?>
+                                            <?php // Фолбэк: если структура не полная, показать как было ранее ?>
+                                            <?php if (isset($details['sex']) && is_array($details['sex'])): ?>
+                                                <div class="mt-1">
+                                                    <small class="text-muted">Пол:</small>
+                                                    <?php foreach ($details['sex'] as $sex): ?>
+                                                        <span class="badge bg-info me-1"><?= htmlspecialchars($sex) ?></span>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                            <?php endif; ?>
+                                            <?php if (isset($details['dist']) && is_array($details['dist'])): ?>
+                                                <div class="mt-1">
+                                                    <small class="text-muted">Дистанции:</small><br>
+                                                    <small><?= htmlspecialchars(implode(', ', $details['dist'])) ?></small>
+                                                </div>
+                                            <?php endif; ?>
                                         <?php endif; ?>
                                     </div>
                                     <?php endforeach; ?>

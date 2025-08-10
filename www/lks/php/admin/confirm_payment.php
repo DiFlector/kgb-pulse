@@ -15,9 +15,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $registration_id = $_POST['registration_id'] ?? null;
-$new_status = $_POST['new_status'] ?? null;
+$oplata = $_POST['oplata'] ?? null;
 
-if (!$registration_id || !$new_status) {
+if (!$registration_id || !isset($oplata)) {
     echo json_encode(['success' => false, 'error' => 'Отсутствуют обязательные параметры']);
     exit;
 }
@@ -41,16 +41,16 @@ try {
         exit;
     }
     
-    // Обновляем статус
+    // Обновляем статус оплаты
     $stmt = $db->prepare("
         UPDATE listreg 
-        SET status = ? 
+        SET oplata = ? 
         WHERE oid = ?
     ");
-    $stmt->execute([$new_status, $registration_id]);
+    $stmt->execute([$oplata ? 1 : 0, $registration_id]);
     
     // Логируем действие
-    $action = "Изменение статуса регистрации с '{$registration['status']}' на '{$new_status}'";
+    $action = $oplata ? "Подтверждение оплаты" : "Отмена оплаты";
     $stmt = $db->prepare("
         INSERT INTO user_actions (users_oid, action, ip_address, created_at)
         VALUES (?, ?, ?, NOW())
@@ -59,13 +59,13 @@ try {
     
     echo json_encode([
         'success' => true,
-        'message' => 'Статус успешно обновлен',
+        'message' => $oplata ? 'Оплата подтверждена' : 'Оплата отменена',
         'registration_id' => $registration_id,
-        'new_status' => $new_status
+        'oplata' => $oplata
     ]);
     
 } catch (Exception $e) {
-    error_log("Ошибка в update_registration_status.php (admin): " . $e->getMessage());
+    error_log("Ошибка в confirm_payment.php (admin): " . $e->getMessage());
     echo json_encode(['success' => false, 'error' => 'Ошибка базы данных']);
 }
 ?> 

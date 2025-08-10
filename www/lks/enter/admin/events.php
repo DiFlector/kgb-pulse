@@ -53,6 +53,18 @@ include '../includes/header.php';
         <h6 class="m-0 font-weight-bold">Фильтры</h6>
     </div>
     <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label class="form-label">Автозакрытие регистрации</label>
+                <div class="input-group">
+                    <span class="input-group-text">За</span>
+                    <input type="number" min="0" max="365" class="form-control" id="daysBeforeCloseInput" placeholder="5"/>
+                    <span class="input-group-text">дней до старта</span>
+                    <button class="btn btn-outline-primary" type="button" id="saveCronSettingsBtn"><i class="bi bi-save"></i></button>
+                </div>
+                <div class="form-text">Также действует правило: за 30 дней до старта регистрация открывается автоматически.</div>
+            </div>
+        </div>
         <div class="row">
             <div class="col-md-3">
                 <label for="statusFilter" class="form-label">Статус</label>
@@ -258,6 +270,31 @@ document.addEventListener("DOMContentLoaded", function() {
     // Автофильтрация при вводе
     document.getElementById("searchInput").addEventListener("input", applyFilters);
     document.getElementById("statusFilter").addEventListener("change", applyFilters);
+
+    // Загрузка настроек cron
+    fetch('/lks/php/admin/get_cron_settings.php')
+        .then(r => r.json())
+        .then(d => {
+            if (d && d.success && d.data && typeof d.data.days_before_close !== 'undefined') {
+                document.getElementById('daysBeforeCloseInput').value = d.data.days_before_close;
+            }
+        })
+        .catch(() => {});
+
+    // Сохранение настроек cron
+    document.getElementById('saveCronSettingsBtn').addEventListener('click', function() {
+        const days = parseInt(document.getElementById('daysBeforeCloseInput').value || '0', 10);
+        fetch('/lks/php/admin/save_cron_settings.php', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ days_before_close: isNaN(days) ? 0 : days })
+        })
+        .then(r => r.json())
+        .then(d => {
+            showNotification(d.success ? 'Настройки сохранены' : ('Ошибка: ' + (d.message || '')), d.success ? 'success' : 'error');
+        })
+        .catch(() => showNotification('Ошибка сохранения настроек', 'error'));
+    });
 });
 </script>
 

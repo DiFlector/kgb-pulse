@@ -264,7 +264,10 @@ class Auth {
             return false;
         }
         
-        return $_SESSION['user_role'] === 'SuperUser' || $_SESSION['user_id'] === 999;
+        $isSuper = $_SESSION['user_role'] === 'SuperUser' || $_SESSION['user_id'] === 999;
+        error_log("DEBUG: isSuperUser check - user_role: " . $_SESSION['user_role'] . ", user_id: " . $_SESSION['user_id'] . ", result: " . ($isSuper ? 'true' : 'false'));
+        
+        return $isSuper;
     }
     
     /**
