@@ -293,6 +293,15 @@ class EventRegistration
                     LIMIT 1
                 ";
                 $params = [$phoneDigits];
+            } else if ($searchBy === 'sport_number' || $searchBy === 'userid') {
+                // Поиск по спортивному номеру (userid)
+                $sql = "
+                    SELECT oid, userid, fio, email, telephone, sex, city
+                    FROM users
+                    WHERE userid = ? AND accessrights = 'Sportsman'
+                    LIMIT 1
+                ";
+                $params = [intval($query)];
             } else {
                 return null;
             }
@@ -344,12 +353,10 @@ class EventRegistration
             // Получаем или создаем команду
             $teamId = $this->getOrCreateTeam($participantData, $teamMode, $eventId);
 
-            // Формируем данные для класса и дистанции
-            $classDistanceData = [
-                'class' => $participantData['class'],
-                'sex' => $participantData['sex'],
-                'distance' => $participantData['distance'] // Может содержать несколько дистанций через запятую
-            ];
+            // Подготовка параметров
+            $className = $participantData['class'];
+            $sex = $participantData['sex'];
+            $distanceStr = trim((string)$participantData['distance']);
 
             // Получаем oid пользователя и мероприятия
             $userOid = $this->db->fetchOne("SELECT oid FROM users WHERE userid = ?", [$targetUserId]);
@@ -358,44 +365,55 @@ class EventRegistration
                 throw new Exception("Ошибка регистрации: не удалось получить oid пользователя или мероприятия");
             }
 
-            // Проверяем, не зарегистрирован ли уже участник на эти дистанции (аналогично registerParticipant)
-            $distances = array_map('trim', explode(',', $participantData['distance']));
-            $stmt = $this->db->prepare("
-                SELECT l.discipline FROM listreg l
-                WHERE l.users_oid = ? AND l.meros_oid = ? AND l.discipline->>'class' = ? AND l.discipline->>'sex' = ?
-            ");
-            $stmt->execute([
-                $userOid['oid'],
-                $eventOid['oid'],
-                $participantData['class'],
-                $participantData['sex']
-            ]);
+            // Проверяем, не зарегистрирован ли уже участник на выбранную дистанцию (учёт старого и нового форматов)
+            $stmt = $this->db->prepare("SELECT l.discipline FROM listreg l WHERE l.users_oid = ? AND l.meros_oid = ?");
+            $stmt->execute([$userOid['oid'], $eventOid['oid']]);
             $existingDisciplines = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $alreadyRegisteredDistances = [];
             foreach ($existingDisciplines as $discJson) {
                 $disc = json_decode($discJson, true);
-                if (isset($disc['distance'])) {
-                    $dists = array_map('trim', explode(',', $disc['distance']));
-                    foreach ($dists as $d) {
-                        $alreadyRegisteredDistances[] = $d;
+                if (!$disc) { continue; }
+                if (isset($disc['class'])) {
+                    // Новый формат
+                    if (($disc['class'] ?? '') === $className && ($disc['sex'] ?? '') === $sex) {
+                        $dists = array_map('trim', explode(',', $disc['distance'] ?? ''));
+                        foreach ($dists as $d) { if ($d !== '') $alreadyRegisteredDistances[] = $d; }
+                    }
+                } else {
+                    // Старый формат: {"K-1":{"sex":["М"],"dist":["200", ...]}}
+                    foreach ($disc as $cls => $details) {
+                        if ($cls !== $className || !is_array($details)) { continue; }
+                        $sexValues = isset($details['sex']) ? (is_array($details['sex']) ? $details['sex'] : [$details['sex']]) : [];
+                        if (!in_array($sex, $sexValues)) { continue; }
+                        $distValues = isset($details['dist']) ? (is_array($details['dist']) ? $details['dist'] : [$details['dist']]) : [];
+                        foreach ($distValues as $dv) {
+                            $parts = array_map('trim', explode(',', str_replace(['м',' '], '', $dv)));
+                            foreach ($parts as $p) { if ($p !== '') $alreadyRegisteredDistances[] = $p; }
+                        }
                     }
                 }
             }
-            foreach ($distances as $distance) {
-                if (in_array($distance, $alreadyRegisteredDistances)) {
-                    throw new Exception("Участник {$participantData['fio']} уже зарегистрирован на дистанцию {$distance}м в классе {$participantData['class']} {$participantData['sex']}");
-                }
+            if (in_array($distanceStr, $alreadyRegisteredDistances)) {
+                $this->db->rollBack();
+                return [
+                    'success' => true,
+                    'message' => "Участник {$participantData['fio']} уже зарегистрирован на дистанцию {$distanceStr}м в классе {$className} {$sex}"
+                ];
             }
 
             $status = 'В очереди';
             $cost = $event['defcost'] ?? '0';
             $role = $participantData['team_role'] ?? 'участник';
 
-            // Создаем регистрацию
-            $stmt = $this->db->prepare("
-                INSERT INTO listreg (users_oid, meros_oid, teams_oid, discipline, oplata, cost, status, role)
-                VALUES (?, ?, ?, ?, false, ?, ?, ?)
-            ");
+            // Формируем дисциплину в старом формате и создаём запись
+            $classDistanceData = [
+                $className => [
+                    'sex' => [$sex],
+                    'dist' => [$distanceStr]
+                ]
+            ];
+            $stmt = $this->db->prepare("INSERT INTO listreg (users_oid, meros_oid, teams_oid, discipline, oplata, cost, status, role)
+                VALUES (?, ?, ?, ?, false, ?, ?, ?)");
             $stmt->execute([
                 $userOid['oid'],
                 $eventOid['oid'],
@@ -406,8 +424,6 @@ class EventRegistration
                 $role
             ]);
 
-            $registrationId = $this->db->lastInsertId();
-
             // Обновляем количество участников в команде
             $this->updateTeamParticipantCount($teamId);
 
@@ -416,7 +432,6 @@ class EventRegistration
             return [
                 'success' => true,
                 'message' => "Участник {$participantData['fio']} успешно зарегистрирован",
-                'registration_id' => $registrationId,
                 'user_id' => $targetUserId,
                 'team_id' => $teamId
             ];
@@ -533,7 +548,7 @@ class EventRegistration
         if ($teamMode === 'single_team') {
             // Режим одной команды на все дистанции - ищем существующую команду
             $stmt = $this->db->prepare("
-                SELECT t.teamid FROM teams t
+                SELECT t.oid FROM teams t
                 JOIN listreg lr ON t.oid = lr.teams_oid
                 JOIN meros m ON lr.meros_oid = m.oid
                 WHERE m.champn = ? 
@@ -551,9 +566,9 @@ class EventRegistration
                 $participantData['sex']
             ]);
             
-            $existingTeamId = $stmt->fetchColumn();
-            if ($existingTeamId) {
-                return $existingTeamId;
+            $existingTeamOid = $stmt->fetchColumn();
+            if ($existingTeamOid) {
+                return (int)$existingTeamOid; // возвращаем OID
             }
         }
         
@@ -585,10 +600,10 @@ class EventRegistration
         }
         $personsAll = $this->getMaxParticipantsWithReserve($className);
         $stmt = $this->db->prepare("
-            INSERT INTO teams (teamid, teamname, teamcity, persons_amount, persons_all, another_team)
-            VALUES (?, ?, ?, 0, ?, 0)
+            INSERT INTO teams (teamid, teamname, teamcity, persons_amount, persons_all, another_team, class)
+            VALUES (?, ?, ?, 0, ?, 0, ?)
         ");
-        $stmt->execute([$newTeamId, $teamName, $teamCity, $personsAll]);
+        $stmt->execute([$newTeamId, $teamName, $teamCity, $personsAll, $className]);
         // Получаем oid только что созданной команды
         $oid = $this->db->fetchOne("SELECT oid FROM teams WHERE teamid = ?", [$newTeamId]);
         if (!$oid || empty($oid['oid'])) {
@@ -734,25 +749,31 @@ class EventRegistration
             if (!$userOid || empty($userOid['oid']) || !$eventOid || empty($eventOid['oid'])) {
                 throw new Exception("Ошибка регистрации: не удалось получить oid пользователя или мероприятия");
             }
-            // Получаем все регистрации пользователя на это мероприятие, класс и пол
-            $stmt = $this->db->prepare("
-                SELECT l.discipline FROM listreg l
-                WHERE l.users_oid = ? AND l.meros_oid = ? AND l.discipline->>'class' = ? AND l.discipline->>'sex' = ?
-            ");
-            $stmt->execute([
-                $userOid['oid'],
-                $eventOid['oid'],
-                $participantData['class'],
-                $participantData['sex']
-            ]);
+            // Получаем все регистрации пользователя на это мероприятие (для проверки дублей и старого формата)
+            $stmt = $this->db->prepare("SELECT l.discipline FROM listreg l WHERE l.users_oid = ? AND l.meros_oid = ?");
+            $stmt->execute([$userOid['oid'], $eventOid['oid']]);
             $existingDisciplines = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $alreadyRegisteredDistances = [];
             foreach ($existingDisciplines as $discJson) {
                 $disc = json_decode($discJson, true);
-                if (isset($disc['distance'])) {
-                    $dists = array_map('trim', explode(',', $disc['distance']));
-                    foreach ($dists as $d) {
-                        $alreadyRegisteredDistances[] = $d;
+                if (!$disc) { continue; }
+                // Новый формат
+                if (isset($disc['class'])) {
+                    if ($disc['class'] === $participantData['class'] && ($disc['sex'] ?? '') === $participantData['sex']) {
+                        $dists = array_map('trim', explode(',', $disc['distance'] ?? ''));
+                        foreach ($dists as $d) { if ($d !== '') $alreadyRegisteredDistances[] = $d; }
+                    }
+                } else {
+                    // Старый формат: {"K-1": {"sex": ["М"], "dist": ["200, 500"]}}
+                    foreach ($disc as $className => $details) {
+                        if ($className !== $participantData['class'] || !is_array($details)) { continue; }
+                        $sexValues = isset($details['sex']) ? (is_array($details['sex']) ? $details['sex'] : [$details['sex']]) : [];
+                        if (!in_array($participantData['sex'], $sexValues)) { continue; }
+                        $distValues = isset($details['dist']) ? (is_array($details['dist']) ? $details['dist'] : [$details['dist']]) : [];
+                        foreach ($distValues as $dv) {
+                            $parts = array_map('trim', explode(',', str_replace(['м',' '], '', $dv)));
+                            foreach ($parts as $p) { if ($p !== '') $alreadyRegisteredDistances[] = $p; }
+                        }
                     }
                 }
             }
@@ -781,11 +802,7 @@ class EventRegistration
                     $teamId = $this->createTeam($participantData);
                 }
             }
-            $classDistanceData = [
-                'class' => $participantData['class'],
-                'sex' => $participantData['sex'],
-                'distance' => $participantData['distance']
-            ];
+            // Создаём отдельную запись на каждую дистанцию (старый групповой формат)
             $status = 'В очереди';
             $cost = $event['defcost'] ?? '0';
             $role = $participantData['team_role'] ?? 'участник';
@@ -800,27 +817,31 @@ class EventRegistration
                 INSERT INTO listreg (users_oid, meros_oid, teams_oid, discipline, oplata, cost, status, role)
                 VALUES (?, ?, ?, ?, false, ?, ?, ?)
             ");
-            $stmt->execute([
-                $userOid['oid'],
-                $eventOid['oid'],
-                $teamOid ? $teamOid['oid'] : null,
-                json_encode($classDistanceData),
-                $cost,
-                $status,
-                $role
-            ]);
-            $registrationId = $this->db->lastInsertId();
+            foreach ($distances as $singleDistance) {
+                $classDistanceData = [
+                    $participantData['class'] => [
+                        'sex' => [$participantData['sex']],
+                        'dist' => [$singleDistance]
+                    ]
+                ];
+                $stmt->execute([
+                    $userOid['oid'],
+                    $eventOid['oid'],
+                    $teamOid ? $teamOid['oid'] : null,
+                    json_encode($classDistanceData),
+                    $cost,
+                    $status,
+                    $role
+                ]);
+            }
             if ($teamOid) {
                 $this->updateTeamParticipantCount($teamOid['oid']);
             }
-            if ($teamOid && !empty($participantData['team_members'])) {
-                $this->addTeamMembers($registrationId, $teamOid['oid'], $eventId, $participantData);
-            }
+            // Для групповых лодок добавление членов команды выполняется в другом потоке логики
             $this->db->commit();
             return [
                 'success' => true,
-                'message' => 'Регистрация успешно создана',
-                'registration_id' => $registrationId
+                'message' => 'Регистрация успешно создана'
             ];
         } catch (Exception $e) {
             $this->db->rollBack();
@@ -865,11 +886,11 @@ class EventRegistration
         $personsAll = $this->getMaxParticipantsWithReserve($className);
 
         $stmt = $this->db->prepare("
-            INSERT INTO teams (teamid, teamname, teamcity, persons_amount, persons_all, another_team)
-            VALUES (?, ?, ?, 1, ?, 0)
+            INSERT INTO teams (teamid, teamname, teamcity, persons_amount, persons_all, another_team, class)
+            VALUES (?, ?, ?, 1, ?, 0, ?)
         ");
         
-        $stmt->execute([$newTeamId, $teamName, $teamCity, $personsAll]);
+        $stmt->execute([$newTeamId, $teamName, $teamCity, $personsAll, $className]);
         
         error_log("Создана команда (оригинальный метод): ID={$newTeamId}, name='{$teamName}', city='{$teamCity}', class={$className}, persons_all={$personsAll}");
 

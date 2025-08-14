@@ -37,7 +37,8 @@ try {
 
     // Получаем информацию о мероприятии
     $db = Database::getInstance();
-    $stmt = $db->prepare("SELECT * FROM meros WHERE champn = ?");
+    // МАССИВ front-end секретаря передаёт oid (внутренний ключ), поэтому выбираем по oid
+    $stmt = $db->prepare("SELECT * FROM meros WHERE oid = ?");
     $stmt->execute([$meroId]);
     $event = $stmt->fetch(PDO::FETCH_ASSOC);
 

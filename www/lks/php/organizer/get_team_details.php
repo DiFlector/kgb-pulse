@@ -135,10 +135,18 @@ try {
                 $confirmedCount++;
             }
         }
-        
-        // Если есть капитан и минимум 1 гребец
-        if ($captain && count($members_list) > 0) {
-            $teamStatus = 'Сформирована';
+
+        // Для драконов: статус "Сформирована" только при наличии рулевого, барабанщика и 10 гребцов (резерв не считается)
+        $isDragon = (strpos((string)$team['class'], 'D-') === 0);
+        if ($isDragon) {
+            if ($coxswain && $drummer && count($members_list) >= 10) {
+                $teamStatus = 'Сформирована';
+            }
+        } else {
+            // Для остальных классов достаточно наличия гребцов
+            if (count($members_list) > 0) {
+                $teamStatus = 'Сформирована';
+            }
         }
     }
     

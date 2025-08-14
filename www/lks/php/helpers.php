@@ -1173,11 +1173,11 @@ function parseEventDate($merodata) {
         return ['date' => '', 'year' => ''];
     }
     
-    // Ищем год в конце строки (4 цифры)
-    if (preg_match('/\b(\d{4})\s*года?\s*$/', $merodata, $yearMatches)) {
+    // Ищем год в конце строки (только 4 цифры или с суффиксом "год/года/г.")
+    if (preg_match('/\b(\d{4})\b\s*(?:года?|г\.)?\s*$/u', $merodata, $yearMatches)) {
         $year = $yearMatches[1];
-        // Убираем год и возможные слова после него из строки
-        $date = preg_replace('/\s*\d{4}\s*года?\s*$/', '', $merodata);
+        // Убираем год и возможный суффикс из конца строки
+        $date = preg_replace('/\s*\b\d{4}\b\s*(?:года?|г\.)?\s*$/u', '', $merodata);
         $date = trim($date);
         // Добавляем пробел в конце, как ожидается в тесте
         $date .= ' ';

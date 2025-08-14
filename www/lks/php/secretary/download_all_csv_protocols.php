@@ -61,7 +61,8 @@ try {
     $protocolManager = JsonProtocolManager::getInstance();
 
     // Получение информации о мероприятии
-    $stmt = $db->prepare("SELECT meroname, merodata FROM meros WHERE champn = ?");
+    // ВАЖНО: в секретаре мы передаём внутренний идентификатор мероприятия (oid)
+    $stmt = $db->prepare("SELECT meroname, merodata FROM meros WHERE oid = ?");
     $stmt->execute([$meroId]);
     $mero = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -134,71 +135,135 @@ try {
         $parts = explode(':', $redisKey);
         $discipline = '';
         $ageGroup = '';
-        
-        if (count($parts) >= 5) {
-            // Формат: protocol:1:K-1:Ж:200:группа 7
-            $boatType = $parts[2]; // K-1
-            $sex = $parts[3];      // Ж
-            $distance = $parts[4];  // 200
-            
+        $boatType = '';
+        $sex = '';
+        $distance = '';
+
+        if (count($parts) >= 6) {
+            // Формат: protocol:<oid>:<boat>:<sex>:<dist>:<age>
+            $boatType = $parts[2];
+            $sex = $parts[3];
+            $distance = $parts[4];
             $discipline = $boatType . ' ' . $distance . 'м ' . $sex;
         }
-        
+
         // Используем правильное название группы из data.name
         $ageGroup = $data['name'] ?? 'группа';
-        
-        // Заголовок протокола
+
+        $isDragon = ($boatType === 'D-10');
+
+        // Заголовок протокола (строка с номером заезда и описанием)
         if ($protocolType === 'start') {
             echo $raceNumber . ';;' . $discipline . ';;;' . $ageGroup . ';;;;' . "\r\n";
         } else {
             echo $raceNumber . ';;' . $discipline . ';;;;;;' . $ageGroup . ';;;;' . "\r\n";
         }
-        
-        // Заголовок таблицы
-        if ($protocolType === 'start') {
-            echo 'СТАРТ;Время заезда;Вода;-;Номер;ФИО;Год рождения;Группа;Спортивный разряд;Спорт.организация' . "\r\n";
-        } else {
-            echo 'ФИНИШ;Место в заезде;Вода;-;Время прохождения;Минуты;Секунды;Номер;ФИО;Год рождения;Группа;Спортивный разряд;Спорт.организация' . "\r\n";
-        }
 
-        // Данные участников
-        $maxLanes = 10;
-        for ($lane = 1; $lane <= $maxLanes; $lane++) {
-            $participant = null;
-            foreach ($data['participants'] as $p) {
-                if (($p['lane'] ?? 0) == $lane) {
-                    $participant = $p;
-                    break;
-                }
+        if ($isDragon) {
+            // Заголовок таблицы для D-10
+            if ($protocolType === 'start') {
+                echo 'СТАРТ;Время заезда;Вода;-;Название команды;Город команды;Возрастная группа команды' . "\r\n";
+            } else {
+                echo 'ФИНИШ;Место в заезде;Вода;-;Время прохождения;Минуты;Секунды;Название команды;Город команды;Возрастная группа команды' . "\r\n";
             }
-            
-            if ($participant) {
+
+            // Группируем участников по командам и накапливаем их состав
+            $teams = [];
+            foreach ($data['participants'] as $p) {
+                $teamKey = $p['teamId'] ?? ($p['team_id'] ?? (($p['teamCity'] ?? '') . '|' . ($p['teamName'] ?? '')));
+                if (!isset($teams[$teamKey])) {
+                    $teams[$teamKey] = [
+                        'lane' => $p['lane'] ?? ($p['water'] ?? ''),
+                        'teamName' => $p['teamName'] ?? ($p['teamname'] ?? ''),
+                        'teamCity' => $p['teamCity'] ?? ($p['teamcity'] ?? ''),
+                        'place' => $p['place'] ?? '',
+                        'finishTime' => $p['finishTime'] ?? '',
+                        'teamAgeGroup' => $p['teamAgeGroupLabel'] ?? ($p['ageGroupLabel'] ?? $ageGroup),
+                        'members' => []
+                    ];
+                }
+                $teams[$teamKey]['members'][] = $p;
+                if ($teams[$teamKey]['lane'] === '' && isset($p['lane'])) $teams[$teamKey]['lane'] = $p['lane'];
+                if ($teams[$teamKey]['place'] === '' && isset($p['place'])) $teams[$teamKey]['place'] = $p['place'];
+                if ($teams[$teamKey]['finishTime'] === '' && isset($p['finishTime'])) $teams[$teamKey]['finishTime'] = $p['finishTime'];
+            }
+
+            foreach ($teams as $team) {
                 if ($protocolType === 'start') {
-                    $row = ';;' . ($lane - 1) . ';-;' . 
-                           ($participant['userId'] ?? '') . ';' . 
-                           ($participant['fio'] ?? '') . ';' . 
-                           extractYearFromBirthdate($participant['birthdata'] ?? '') . ';' . 
-                           $ageGroup . ';' . 
-                           ($participant['sportzvanie'] ?? 'Б/р') . ';' . 
-                           ($participant['city'] ?? 'Москва');
+                    $row = ';;' . ($team['lane'] ?? '') . ';-;' .
+                           ($team['teamName'] ?? '') . ';' .
+                           ($team['teamCity'] ?? '') . ';' .
+                           ($team['teamAgeGroup'] ?? $ageGroup);
                 } else {
-                    $row = ';' . ($participant['place'] ?? '') . ';' . ($lane - 1) . ';-;' . 
-                           ($participant['finishTime'] ?? '') . ';' . 
-                           extractMinutesFromTime($participant['finishTime'] ?? '') . ';' . 
-                           extractSecondsFromTime($participant['finishTime'] ?? '') . ';' . 
-                           ($participant['userId'] ?? '') . ';' . 
-                           ($participant['fio'] ?? '') . ';' . 
-                           extractYearFromBirthdate($participant['birthdata'] ?? '') . ';' . 
-                           $ageGroup . ';' . 
-                           ($participant['sportzvanie'] ?? 'Б/р') . ';' . 
-                           ($participant['city'] ?? 'Москва');
+                    $time = $team['finishTime'] ?? '';
+                    $row = ';' . ($team['place'] ?? '') . ';' . ($team['lane'] ?? '') . ';-;' .
+                           $time . ';' .
+                           extractMinutesFromTime($time) . ';' .
+                           extractSecondsFromTime($time) . ';' .
+                           ($team['teamName'] ?? '') . ';' .
+                           ($team['teamCity'] ?? '') . ';' .
+                           ($team['teamAgeGroup'] ?? $ageGroup);
                 }
                 echo $row . "\r\n";
+
+                // Добавляем состав команды строками ниже
+                // Подзаголовок состава
+                echo ';;;;Номер спортсмена;ФИО;Год рождения;Спортивный разряд' . "\r\n";
+                foreach ($team['members'] as $member) {
+                    $memberRow = ';;;;' .
+                        ($member['userId'] ?? ($member['userid'] ?? '')) . ';' .
+                        ($member['fio'] ?? '') . ';' .
+                        extractYearFromBirthdate($member['birthdata'] ?? '') . ';' .
+                        ($member['sportzvanie'] ?? '');
+                    echo $memberRow . "\r\n";
+                }
+            }
+        } else {
+            // Обычная одиночная/парная лодка: прежний формат
+            if ($protocolType === 'start') {
+                echo 'СТАРТ;Время заезда;Вода;-;Номер;ФИО;Год рождения;Группа;Спортивный разряд;Спорт.организация' . "\r\n";
             } else {
-                if ($protocolType === 'start') {
-                    echo ';;' . ($lane - 1) . ';-;;;;;;' . "\r\n";
+                echo 'ФИНИШ;Место в заезде;Вода;-;Время прохождения;Минуты;Секунды;Номер;ФИО;Год рождения;Группа;Спортивный разряд;Спорт.организация' . "\r\n";
+            }
+
+            $maxLanes = 10;
+            for ($lane = 1; $lane <= $maxLanes; $lane++) {
+                $participant = null;
+                foreach ($data['participants'] as $p) {
+                    if (($p['lane'] ?? 0) == $lane) {
+                        $participant = $p;
+                        break;
+                    }
+                }
+
+                if ($participant) {
+                    if ($protocolType === 'start') {
+                        $row = ';;' . ($lane - 1) . ';-;' .
+                               ($participant['userId'] ?? '') . ';' .
+                               ($participant['fio'] ?? '') . ';' .
+                               extractYearFromBirthdate($participant['birthdata'] ?? '') . ';' .
+                               $ageGroup . ';' .
+                               ($participant['sportzvanie'] ?? 'Б/р') . ';' .
+                               ($participant['city'] ?? 'Москва');
+                    } else {
+                        $row = ';' . ($participant['place'] ?? '') . ';' . ($lane - 1) . ';-;' .
+                               ($participant['finishTime'] ?? '') . ';' .
+                               extractMinutesFromTime($participant['finishTime'] ?? '') . ';' .
+                               extractSecondsFromTime($participant['finishTime'] ?? '') . ';' .
+                               ($participant['userId'] ?? '') . ';' .
+                               ($participant['fio'] ?? '') . ';' .
+                               extractYearFromBirthdate($participant['birthdata'] ?? '') . ';' .
+                               $ageGroup . ';' .
+                               ($participant['sportzvanie'] ?? 'Б/р') . ';' .
+                               ($participant['city'] ?? 'Москва');
+                    }
+                    echo $row . "\r\n";
                 } else {
-                    echo ';;' . ($lane - 1) . ';-;;;;;;;' . "\r\n";
+                    if ($protocolType === 'start') {
+                        echo ';;' . ($lane - 1) . ';-;;;;;;' . "\r\n";
+                    } else {
+                        echo ';;' . ($lane - 1) . ';-;;;;;;;' . "\r\n";
+                    }
                 }
             }
         }

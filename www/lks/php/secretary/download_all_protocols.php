@@ -55,7 +55,8 @@ try {
     $protocolManager = JsonProtocolManager::getInstance();
     
     // Получение информации о мероприятии
-    $stmt = $db->prepare("SELECT meroname, merodata FROM meros WHERE champn = ?");
+    // ВАЖНО: страница протоколов секретаря передаёт oid, поэтому ищем по oid
+    $stmt = $db->prepare("SELECT meroname, merodata FROM meros WHERE oid = ?");
     $stmt->execute([$meroId]);
     $mero = $stmt->fetch(PDO::FETCH_ASSOC);
     

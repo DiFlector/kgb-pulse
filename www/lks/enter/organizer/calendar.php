@@ -13,7 +13,7 @@ $userId = $_SESSION['user_id'];
 // Получение всех мероприятий для календаря
 try {
     $eventsStmt = $db->prepare("
-        SELECT oid, meroname, merodata, status, defcost, class_distance, filepolojenie,
+        SELECT oid, champn, meroname, merodata, status, defcost, class_distance, filepolojenie,
                (SELECT COUNT(*) FROM listreg l JOIN meros m2 ON l.meros_oid = m2.oid WHERE m2.oid = m.oid) as registrations_count
         FROM meros m 
         ORDER BY merodata ASC
@@ -132,18 +132,7 @@ include '../includes/header.php';
         max-width: 90%;
     }
     
-    /* Увеличиваем z-index для модального окна регистрации */
-    #registrationModal {
-        z-index: 1060 !important;
-    }
-    
-    #registrationModal .modal-dialog {
-        z-index: 1061 !important;
-    }
-    
-    #registrationModal .modal-backdrop {
-        z-index: 1059 !important;
-    }
+    /* Убираем локальные переопределения z-index — используем глобальные значения из style.css */
     
     @media (max-width: 768px) {
         .modal-xl {
@@ -324,7 +313,7 @@ include '../includes/header.php';
                             </td>
                             <td>
                                 <?php if ($event['status'] === 'Регистрация'): ?>
-                                    <button class="btn btn-sm btn-success" onclick="registerForEvent(<?= $event['oid'] ?>)">
+                                    <button class="btn btn-sm btn-success" onclick="registerForEvent(<?= $event['champn'] ?>)">
                                         <i class="bi bi-person-plus"></i> Регистрация
                                     </button>
                                 <?php elseif (in_array($event['status'], ['Регистрация закрыта', 'В процессе'])): ?>

@@ -36,8 +36,9 @@ try {
     $meroId = intval($input['meroId']);
 
     // Получаем информацию о мероприятии
+    // На странице секретаря используется внутренний oid мероприятия
     $db = Database::getInstance();
-    $stmt = $db->prepare("SELECT * FROM meros WHERE champn = ?");
+    $stmt = $db->prepare("SELECT * FROM meros WHERE oid = ?");
     $stmt->execute([$meroId]);
     $event = $stmt->fetch(PDO::FETCH_ASSOC);
 

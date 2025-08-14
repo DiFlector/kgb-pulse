@@ -45,15 +45,12 @@ try {
         $groupClasses = [];
         if ($classDistance) {
             foreach ($classDistance as $class => $details) {
-                // Определяем групповые классы (не одиночные)
-                if (strpos($class, '-2') !== false || 
-                    strpos($class, '-4') !== false || 
-                    strpos($class, 'D-10') !== false ||
-                    strpos($class, 'HD-1') !== false ||
-                    strpos($class, 'OD-1') !== false ||
-                    strpos($class, 'OD-2') !== false ||
-                    strpos($class, 'OC-1') !== false) {
-                    
+                // Групповые: K-2, C-2, K-4, C-4, D-10, D-20, ...
+                $normalized = strtoupper(trim($class));
+                $isDragon = (strpos($normalized, 'D-') === 0);
+                $isPairOrFour = (strpos($normalized, '-2') !== false) || (strpos($normalized, '-4') !== false);
+
+                if ($isDragon || $isPairOrFour) {
                     $groupClasses[$class] = $details;
                 }
             }

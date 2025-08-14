@@ -336,6 +336,17 @@ $formData = ['classes' => '', 'gender' => 'М; Ж', 'distances' => '', 'age_grou
 if ($isEdit && $eventData && !empty($eventData['class_distance'])) {
     $formData = parseClassDistanceForForm($eventData['class_distance']);
 }
+
+// Предзаполнение даты и года при редактировании: в поле даты показываем только день и месяц (без года)
+$merodataInputValue = '';
+$eventYearInputValue = date('Y');
+if ($isEdit && $eventData && !empty($eventData['merodata'])) {
+    $merodataInputValue = extractEventDate($eventData['merodata']);
+    $extractedYear = extractEventYear($eventData['merodata']);
+    if (!empty($extractedYear)) {
+        $eventYearInputValue = $extractedYear;
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="ru">
@@ -431,13 +442,13 @@ if ($isEdit && $eventData && !empty($eventData['class_distance'])) {
                                                 <div class="col-md-8">
                                                     <input type="text" class="form-control" id="merodata" name="merodata" 
                                                            placeholder="1 - 5 июля или 31 мая - 1 июня" 
-                                                           value="<?= getEventValue('merodata') ?>" required>
+                                                           value="<?= htmlspecialchars($merodataInputValue !== '' ? $merodataInputValue : getEventValue('merodata')) ?>" required>
                                                     <div class="form-text">Введите дату в формате "1 - 5 июля" или "31 мая - 1 июня"</div>
                                                 </div>
                                                 <div class="col-md-4">
                                                     <input type="number" class="form-control" id="event_year" name="event_year" 
                                                            placeholder="2025" min="2024" max="2030" 
-                                                           value="<?= getEventValue('event_year', date('Y')) ?>" required>
+                                                           value="<?= htmlspecialchars($eventYearInputValue) ?>" required>
                                                     <div class="form-text">Год проведения</div>
                                                 </div>
                                             </div>

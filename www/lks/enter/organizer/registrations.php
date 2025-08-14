@@ -201,9 +201,6 @@ include '../includes/header.php';
         <button type="button" class="btn btn-warning me-2" onclick="mergeTeamsModal()" title="Объединить команды">
             <i class="bi bi-people"></i> Объединить команды
         </button>
-        <button type="button" class="btn btn-danger" onclick="fixDragonTeamRoles()" title="Исправить роли в командах драконов D-10">
-            <i class="bi bi-wrench"></i> Исправить роли драконов
-        </button>
     </div>
 </div>
 
@@ -389,32 +386,32 @@ include '../includes/header.php';
                             </td>
                             <td>
                                 <?php 
-                                // Отображаем выбранные участником дисциплины
-                                $userDisciplines = json_decode($registration['discipline'], true);
-                                if ($userDisciplines && is_array($userDisciplines)) {
-                                    foreach ($userDisciplines as $class => $details) {
+                                // Отображение дисциплин: поддержка нового и старого форматов
+                                $disc = json_decode($registration['discipline'], true);
+                                if (is_array($disc) && isset($disc['class'])) {
+                                    // Новый формат: {class, sex, distance}
+                                    $class = $disc['class'];
+                                    $sexLabel = isset($disc['sex']) ? normalizeSexToRussian($disc['sex']) : '';
+                                    $distance = isset($disc['distance']) ? preg_replace('/\s*м?\s*/u', '', $disc['distance']) . 'м' : '';
+                                    echo "<span class='badge bg-primary me-1'>" . htmlspecialchars($class) . "</span>";
+                                    echo "<small class='text-muted'>" . htmlspecialchars(trim($distance . ' ' . $sexLabel)) . "</small>";
+                                } elseif ($disc && is_array($disc)) {
+                                    // Старый формат: { 'K-1': {sex:[], dist:[]}, ... }
+                                    foreach ($disc as $class => $details) {
                                         echo "<div class='mb-1'>";
                                         echo "<small class='badge bg-primary me-1'>" . htmlspecialchars($class) . "</small>";
-                                        
                                         if (is_array($details)) {
                                             $disciplinesInfo = [];
-                                            
-                                            // Обрабатываем структуру с sex и dist
                                             if (isset($details['sex']) && isset($details['dist'])) {
                                                 $sexValues = is_array($details['sex']) ? $details['sex'] : [$details['sex']];
                                                 $distValues = is_array($details['dist']) ? $details['dist'] : [$details['dist']];
-                                                
                                                 foreach ($distValues as $distance) {
-                                                    // Убираем лишнее форматирование для дистанций
                                                     $cleanDistance = str_replace(['м', 'м', ' '], '', $distance);
                                                     foreach ($sexValues as $sex) {
-                                                        $sexLabel = normalizeSexToRussian($sex);
-                                                        $disciplinesInfo[] = $cleanDistance . "м " . $sexLabel;
+                                                        $disciplinesInfo[] = $cleanDistance . "м " . normalizeSexToRussian($sex);
                                                     }
                                                 }
-                                            }
-                                            // Обрабатываем старые форматы
-                                            else {
+                                            } else {
                                                 foreach ($details as $key => $value) {
                                                     if (is_array($value)) {
                                                         foreach ($value as $item) {
@@ -425,7 +422,6 @@ include '../includes/header.php';
                                                     }
                                                 }
                                             }
-                                            
                                             if (!empty($disciplinesInfo)) {
                                                 echo "<br><small class='text-muted'>" . htmlspecialchars(implode(', ', $disciplinesInfo)) . "</small>";
                                             }
@@ -501,32 +497,30 @@ include '../includes/header.php';
                             </td>
                             <td>
                                 <?php 
-                                // Отображаем выбранные участником дисциплины (индивидуальные участники)
-                                $userDisciplines = json_decode($registration['discipline'], true);
-                                if ($userDisciplines && is_array($userDisciplines)) {
-                                    foreach ($userDisciplines as $class => $details) {
+                                // Отображение дисциплин: поддержка нового и старого форматов (индивидуальные)
+                                $disc = json_decode($registration['discipline'], true);
+                                if (is_array($disc) && isset($disc['class'])) {
+                                    $class = $disc['class'];
+                                    $sexLabel = isset($disc['sex']) ? normalizeSexToRussian($disc['sex']) : '';
+                                    $distance = isset($disc['distance']) ? preg_replace('/\s*м?\s*/u', '', $disc['distance']) . 'м' : '';
+                                    echo "<span class='badge bg-primary me-1'>" . htmlspecialchars($class) . "</span>";
+                                    echo "<small class='text-muted'>" . htmlspecialchars(trim($distance . ' ' . $sexLabel)) . "</small>";
+                                } elseif ($disc && is_array($disc)) {
+                                    foreach ($disc as $class => $details) {
                                         echo "<div class='mb-1'>";
-                                        echo "<strong class='badge bg-primary me-1'>" . htmlspecialchars($class) . "</strong>";
-                                        
+                                        echo "<span class='badge bg-primary me-1'>" . htmlspecialchars($class) . "</span>";
                                         if (is_array($details)) {
                                             $disciplinesInfo = [];
-                                            
-                                            // Обрабатываем структуру с sex и dist
                                             if (isset($details['sex']) && isset($details['dist'])) {
                                                 $sexValues = is_array($details['sex']) ? $details['sex'] : [$details['sex']];
                                                 $distValues = is_array($details['dist']) ? $details['dist'] : [$details['dist']];
-                                                
                                                 foreach ($distValues as $distance) {
-                                                    // Убираем лишнее форматирование для дистанций
                                                     $cleanDistance = str_replace(['м', 'м', ' '], '', $distance);
                                                     foreach ($sexValues as $sex) {
-                                                        $sexLabel = normalizeSexToRussian($sex);
-                                                        $disciplinesInfo[] = $cleanDistance . "м " . $sexLabel;
+                                                        $disciplinesInfo[] = $cleanDistance . "м " . normalizeSexToRussian($sex);
                                                     }
                                                 }
-                                            }
-                                            // Обрабатываем старые форматы
-                                            else {
+                                            } else {
                                                 foreach ($details as $key => $value) {
                                                     if (is_array($value)) {
                                                         foreach ($value as $item) {
@@ -537,7 +531,6 @@ include '../includes/header.php';
                                                     }
                                                 }
                                             }
-                                            
                                             if (!empty($disciplinesInfo)) {
                                                 echo "<br><small class='text-muted'>" . htmlspecialchars(implode(', ', $disciplinesInfo)) . "</small>";
                                             }
@@ -1518,20 +1511,8 @@ function createEditTeamModal(teamData) {
                         
                         ${isDragonTeam ? `
                         <div class="row">
-                            <!-- Капитан -->
-                            <div class="col-md-3 mb-4">
-                                <div class="card">
-                                    <div class="card-header bg-success text-white">
-                                        <h6 class="mb-0"><i class="bi bi-star-fill me-2"></i>Капитан (1)</h6>
-                                    </div>
-                                    <div class="card-body captain-dropzone" data-role="captain" style="min-height: 120px;">
-                                        ${captain ? createMemberCard(captain) : '<div class="text-muted text-center py-3">Капитан не назначен<br><small>Перетащите участника сюда</small></div>'}
-                                    </div>
-                                </div>
-                            </div>
-                            
                             <!-- Рулевой -->
-                            <div class="col-md-3 mb-4">
+                            <div class="col-md-4 mb-4">
                                 <div class="card">
                                     <div class="card-header bg-info text-white">
                                         <h6 class="mb-0"><i class="bi bi-compass me-2"></i>Рулевой (1)</h6>
@@ -1543,7 +1524,7 @@ function createEditTeamModal(teamData) {
                             </div>
                             
                             <!-- Барабанщик -->
-                            <div class="col-md-3 mb-4">
+                            <div class="col-md-4 mb-4">
                                 <div class="card">
                                     <div class="card-header bg-secondary text-white">
                                         <h6 class="mb-0"><i class="bi bi-music-note me-2"></i>Барабанщик (1)</h6>
@@ -1555,7 +1536,7 @@ function createEditTeamModal(teamData) {
                             </div>
                             
                             <!-- Резерв -->
-                            <div class="col-md-3 mb-4">
+                            <div class="col-md-4 mb-4">
                                 <div class="card">
                                     <div class="card-header bg-warning text-white">
                                         <h6 class="mb-0">
@@ -1933,7 +1914,7 @@ function createMemberCard(member) {
  * Инициализация Drag & Drop для команды драконов
  */
 function initializeDragonTeamDragDrop() {
-    const dropzones = document.querySelectorAll('.captain-dropzone, .members-dropzone, .reserves-dropzone, .coxswain-dropzone, .drummer-dropzone');
+    const dropzones = document.querySelectorAll('.members-dropzone, .reserves-dropzone, .coxswain-dropzone, .drummer-dropzone');
     const memberCards = document.querySelectorAll('.member-card');
     
     // Добавляем класс dropzone для всех зон
@@ -2108,10 +2089,6 @@ function updateTeamCounts() {
     // Добавляем сообщения в пустые зоны
     const dropzones = [
         {
-            element: document.querySelector('.captain-dropzone'),
-            emptyMessage: 'Капитан не назначен<br><small>Перетащите участника сюда</small>'
-        },
-        {
             element: document.querySelector('.coxswain-dropzone'),
             emptyMessage: 'Рулевой не назначен<br><small>Перетащите участника сюда</small>'
         },
@@ -2151,31 +2128,27 @@ function autoAssignDragonRoles() {
         return;
     }
     
-    // Очищаем все зоны
-    document.querySelector('.captain-dropzone').innerHTML = '';
-    document.querySelector('.coxswain-dropzone').innerHTML = '';
-    document.querySelector('.drummer-dropzone').innerHTML = '';
-    document.querySelector('.members-dropzone').innerHTML = '';
-    document.querySelector('.reserves-dropzone').innerHTML = '';
+    // Очищаем все зоны (без капитана)
+    const coxZone = document.querySelector('.coxswain-dropzone');
+    const drumZone = document.querySelector('.drummer-dropzone');
+    const memZone = document.querySelector('.members-dropzone');
+    const resZone = document.querySelector('.reserves-dropzone');
+    if (coxZone) coxZone.innerHTML = '';
+    if (drumZone) drumZone.innerHTML = '';
+    if (memZone) memZone.innerHTML = '';
+    if (resZone) resZone.innerHTML = '';
     
     // Распределяем участников
     allMembers.forEach((member, index) => {
-        if (index === 0) {
-            // Первый - капитан
-            member.dataset.currentRole = 'captain';
-            document.querySelector('.captain-dropzone').appendChild(member);
-        } else if (index === 1) {
-            // Второй - рулевой
+        if (index === 0 && coxZone) {
             member.dataset.currentRole = 'coxswain';
-            document.querySelector('.coxswain-dropzone').appendChild(member);
-        } else if (index === 2) {
-            // Третий - барабанщик
+            coxZone.appendChild(member);
+        } else if (index === 1 && drumZone) {
             member.dataset.currentRole = 'drummer';
-            document.querySelector('.drummer-dropzone').appendChild(member);
-        } else {
-            // Остальные - гребцы
+            drumZone.appendChild(member);
+        } else if (memZone) {
             member.dataset.currentRole = 'member';
-            document.querySelector('.members-dropzone').appendChild(member);
+            memZone.appendChild(member);
         }
     });
     
@@ -3182,6 +3155,21 @@ async function addParticipant() {
  * Показ модального окна выбора участника
  */
 function showParticipantSelectionModal(participants) {
+    const listHtml = (participants && participants.length > 0)
+        ? participants.map(participant => `
+                <button type="button" class="list-group-item list-group-item-action" 
+                        onclick="selectParticipant(${JSON.stringify(participant).replace(/"/g, '&quot;')})">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>${participant.fio}</strong>
+                            <br><small class="text-muted">№${participant.userid} | ${participant.email}</small>
+                        </div>
+                        <span class="badge bg-${getStatusColor(participant.status)}">${participant.status}</span>
+                    </div>
+                </button>
+            `).join('')
+        : '<div class="list-group-item text-muted">Нет доступных участников. Проверьте, что участники зарегистрированы на это мероприятие и их лодки/дисциплины соответствуют выбранному классу.</div>';
+
     const modalHtml = `
         <div class="modal fade" id="participantSelectionModal" tabindex="-1">
             <div class="modal-dialog modal-lg">
@@ -3192,18 +3180,7 @@ function showParticipantSelectionModal(participants) {
                     </div>
                     <div class="modal-body">
                         <div class="list-group">
-                            ${participants.map(participant => `
-                                <button type="button" class="list-group-item list-group-item-action" 
-                                        onclick="selectParticipant(${JSON.stringify(participant).replace(/"/g, '&quot;')})">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div>
-                                            <strong>${participant.fio}</strong>
-                                            <br><small class="text-muted">№${participant.userid} | ${participant.email}</small>
-                                        </div>
-                                        <span class="badge bg-${getStatusColor(participant.status)}">${participant.status}</span>
-                                    </div>
-                                </button>
-                            `).join('')}
+                            ${listHtml}
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -3396,19 +3373,9 @@ async function saveTeam() {
  * Получает вместимость лодки по классу
  */
 function getBoatCapacity(boatType) {
-    const capacities = {
-        'K-2': 2,
-        'K-4': 4,
-        'C-2': 2,
-        'C-4': 4,
-        'D-10': 14, // 10 гребцов + рулевой + барабанщик + 2 резерва
-        'HD-1': 1,
-        'OD-1': 1,
-        'OD-2': 2,
-        'OC-1': 1
-    };
-    
-    return capacities[boatType] || 1;
+    const normalized = normalizeBoatClass(boatType);
+    const match = normalized.match(/(\d+)/);
+    return match ? parseInt(match[1], 10) : 1;
 }
 </script>
 

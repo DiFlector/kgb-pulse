@@ -142,9 +142,6 @@ include '../includes/header.php';
         <button type="button" class="btn btn-warning me-2" onclick="mergeTeamsModal()" title="Объединить команды">
             <i class="bi bi-people"></i> Объединить команды
         </button>
-        <button type="button" class="btn btn-danger" onclick="fixDragonTeamRoles()" title="Исправить роли в командах драконов D-10">
-            <i class="bi bi-wrench"></i> Исправить роли драконов
-        </button>
     </div>
 </div>
 

@@ -108,18 +108,7 @@ include __DIR__ . '/../includes/header.php';
         max-width: 90%;
     }
     
-    /* Увеличиваем z-index для модального окна регистрации */
-    #registrationModal {
-        z-index: 1060 !important;
-    }
-    
-    #registrationModal .modal-dialog {
-        z-index: 1061 !important;
-    }
-    
-    #registrationModal .modal-backdrop {
-        z-index: 1059 !important;
-    }
+    /* Убираем локальные переопределения z-index — используем глобальные значения из style.css */
     
     @media (max-width: 768px) {
         .modal-xl {
