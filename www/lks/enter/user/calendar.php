@@ -66,11 +66,22 @@ try {
 // Настройки страницы
 $pageTitle = 'Календарь соревнований';
 $pageHeader = 'Календарь соревнований';
+$pageIcon = 'bi bi-calendar-range';
 $showBreadcrumb = true;
 $breadcrumb = [
     ['href' => '/lks/enter/user/', 'title' => 'Спортсмен'],
     ['href' => '#', 'title' => 'Календарь соревнований']
 ];
+
+// Кнопки действий в заголовке
+$pageActions = <<<HTML
+    <button class="btn btn-outline-primary" onclick="filterCurrentYear()">
+        <i class="bi bi-calendar-check me-1"></i>Текущий год
+    </button>
+    <a href="registrations.php" class="btn btn-success">
+        <i class="bi bi-person-check me-1"></i>Мои регистрации
+    </a>
+HTML;
 
 include __DIR__ . '/../includes/header.php';
 ?>
@@ -107,6 +118,9 @@ include __DIR__ . '/../includes/header.php';
     .modal-xl {
         max-width: 90%;
     }
+    /* Компактная карточка участника */
+    #registrationModal .form-control-sm { min-height: calc(1.5em + .5rem + 2px); }
+    #registrationModal .card .form-label { font-size: .85rem; }
     
     /* Убираем локальные переопределения z-index — используем глобальные значения из style.css */
     
@@ -132,18 +146,7 @@ include __DIR__ . '/../includes/header.php';
     }
 </style>
 
-<!-- Заголовок -->
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="h3 mb-0">Календарь соревнований</h1>
-    <div>
-        <button class="btn btn-outline-primary me-2" onclick="filterCurrentYear()">
-            <i class="bi bi-calendar-check me-1"></i>Текущий год
-        </button>
-        <a href="index.php" class="btn btn-success">
-            <i class="bi bi-person-check me-1"></i>Мои регистрации
-        </a>
-    </div>
-</div>
+<!-- Заголовок выводится через include/header.php -->
 
 <!-- Фильтры -->
 <div class="card mb-4">
@@ -299,15 +302,15 @@ include __DIR__ . '/../includes/header.php';
                                     $isRegistered = isset($userRegistrations[$event['champn']]);
                                     ?>
                                     <?php if ($event['status'] === 'Регистрация' && !$isRegistered): ?>
-                                        <button class="btn btn-success btn-sm register-btn" data-event-id="<?= $event['champn'] ?>">
-                                            <i class="bi bi-person-plus"></i>
+                                        <button class="btn btn-success register-btn px-3 py-2" data-event-id="<?= $event['champn'] ?>">
+                                            <i class="bi bi-person-plus fs-5"></i>
                                         </button>
                                     <?php elseif ($isRegistered): ?>
-                                        <span class="badge bg-success">
-                                            <i class="bi bi-check-circle"></i>
+                                        <span class="badge bg-success text-white px-3 py-2">
+                                            <i class="bi bi-check-circle fs-5"></i>
                                         </span>
                                     <?php else: ?>
-                                        <span class="badge bg-<?= getStatusColor($event['status']) ?>">
+                                        <span class="badge bg-<?= getStatusColor($event['status']) ?> px-3 py-2">
                                             <?= getStatusText($event['status']) ?>
                                         </span>
                                     <?php endif; ?>
@@ -455,12 +458,12 @@ function createRegistrationModal() {
     modal.innerHTML = `
         <div class="modal-dialog modal-xl" style="z-index: 1061;">
             <div class="modal-content">
-                <div class="modal-header">
+                <div class="modal-header position-sticky top-0">
                     <h5 class="modal-title">
                         <i class="fas fa-user-plus me-2"></i>
                         Регистрация на мероприятие: <span id="eventName"></span>
                     </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть" style="filter: brightness(0) invert(1);"></button>
                 </div>
                 <div class="modal-body">
                     <div class="container-fluid px-0">

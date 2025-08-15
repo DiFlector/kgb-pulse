@@ -421,12 +421,12 @@ function createRegistrationModal() {
     modal.innerHTML = `
         <div class="modal-dialog modal-xl" style="z-index: 1061;">
             <div class="modal-content">
-                <div class="modal-header">
+                <div class="modal-header position-sticky top-0">
                     <h5 class="modal-title">
                         <i class="bi bi-user-plus me-2"></i>
                         Регистрация на мероприятие: <span id="eventName"></span>
                     </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть" style="filter: brightness(0) invert(1);"></button>
                 </div>
                 <div class="modal-body">
                     <div class="text-center">

@@ -463,29 +463,47 @@ class EventRegistration {
             </div>
         `;
 
+        const isDragon = (className && /D-?10/i.test(className));
+        const roleForSlot = (slot) => {
+            if (!isDragon) return '';
+            if (slot === 11) return 'coxswain';
+            if (slot === 12) return 'drummer';
+            if (slot === 13 || slot === 14) return 'reserve';
+            return '';
+        };
+        const titleForSlot = (slot) => {
+            if (!isDragon) return `Участник № ${slot}`;
+            if (slot === 11) return 'Рулевой';
+            if (slot === 12) return 'Барабанщик';
+            if (slot === 13) return 'Запасной участник 1';
+            if (slot === 14) return 'Запасной участник 2';
+            return `Гребец № ${slot}`;
+        };
+
         const buildParticipantFields = (dist, idx) => {
             const baseId = `d${dist}_p${idx}`;
             return `
-                <div class="card mb-3">
-                    <div class="card-header py-2"><strong>Участник № ${idx}</strong></div>
-                    <div class="card-body">
-                        <div class="row g-3">
+                <div class="card h-100">
+                    <div class="card-header py-2"><strong>${titleForSlot(idx)}</strong></div>
+                    <div class="card-body py-2">
+                        <div class="row g-2">
                             <div class="col-md-6">
-                                <label class="form-label">ФИО</label>
-                                <input type="text" class="form-control" id="${baseId}_fio">
+                                <label class="form-label mb-1">ФИО</label>
+                                <input type="text" class="form-control form-control-sm" id="${baseId}_fio">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Почта</label>
-                                <input type="email" class="form-control" id="${baseId}_email" data-lookup="email" data-dist="${dist}" data-idx="${idx}">
+                                <label class="form-label mb-1">Почта</label>
+                                <input type="email" class="form-control form-control-sm" id="${baseId}_email" data-lookup="email" data-dist="${dist}" data-idx="${idx}">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Телефон</label>
-                                <input type="tel" class="form-control" id="${baseId}_phone" data-lookup="phone" data-dist="${dist}" data-idx="${idx}">
+                                <label class="form-label mb-1">Телефон</label>
+                                <input type="tel" class="form-control form-control-sm" id="${baseId}_phone" data-lookup="phone" data-dist="${dist}" data-idx="${idx}">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Номер спортсмена</label>
-                                <input type="text" class="form-control" id="${baseId}_sport" data-lookup="sport_number" data-dist="${dist}" data-idx="${idx}">
+                                <label class="form-label mb-1">Номер спортсмена</label>
+                                <input type="text" class="form-control form-control-sm" id="${baseId}_sport" data-lookup="sport_number" data-dist="${dist}" data-idx="${idx}">
                             </div>
+                            ${roleForSlot(idx) ? `<input type="hidden" id="${baseId}_role" value="${roleForSlot(idx)}">` : ''}
                         </div>
                     </div>
                 </div>
@@ -512,10 +530,11 @@ class EventRegistration {
                 </div>
             `;
 
-            let participantsHtml = '';
+            let participantsHtml = '<div class="row g-3 row-cols-1 row-cols-md-2 row-cols-lg-3 row-cols-xl-4">';
             for (let i = 1; i <= maxParticipants; i++) {
-                participantsHtml += buildParticipantFields(dist, i);
+                participantsHtml += `<div class="col">${buildParticipantFields(dist, i)}</div>`;
             }
+            participantsHtml += '</div>';
 
             return `
                 <section class="mb-4 distance-section" id="distance_${dist}" data-distance="${dist}">
@@ -530,9 +549,12 @@ class EventRegistration {
         contentHtml += renderDistanceSection(distances[0], distances.join(', ') + 'м');
 
         const footerHtml = `
-            <div class="d-flex justify-content-end gap-2">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                <button type="button" class="btn btn-primary" id="submitParticipantsBtn">Отправить заявку</button>
+            <div class="d-flex justify-content-between flex-wrap gap-2 align-items-center">
+                <div class="text-muted small">Совет: оставьте незаполненными поля для отсутствующих участников — команда получит статус \"Ожидание команды\". Полная команда автоматически будет со статусом \"В очереди\".</div>
+                <div class="ms-auto d-flex gap-2">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" id="submitParticipantsBtn">Отправить заявку</button>
+                </div>
             </div>
         `;
 
@@ -672,8 +694,9 @@ class EventRegistration {
                     const email = document.getElementById(`${baseId}_email`)?.value?.trim() || '';
                     const phone = document.getElementById(`${baseId}_phone`)?.value?.trim() || '';
                     const sport = document.getElementById(`${baseId}_sport`)?.value?.trim() || '';
+                    const role = document.getElementById(`${baseId}_role`)?.value || '';
                     if (!fio && !email && !phone && !sport) continue;
-                    rows.push({ fio, email, phone, sport });
+                    rows.push({ slot: i, fio, email, phone, sport, role });
                 }
                 for (const dist of distances) {
                     for (let idx = 0; idx < rows.length; idx++) {
@@ -687,7 +710,8 @@ class EventRegistration {
                                 fio: r.fio,
                                 email: r.email,
                                 phone: r.phone,
-                                sport_number: r.sport
+                                sport_number: r.sport,
+                                team_role: r.role || undefined
                             },
                             team_name: teamNameCommon,
                             team_city: teamCityCommon,
@@ -717,13 +741,14 @@ class EventRegistration {
                         const email = document.getElementById(`${baseId}_email`)?.value?.trim() || '';
                         const phone = document.getElementById(`${baseId}_phone`)?.value?.trim() || '';
                         const sport = document.getElementById(`${baseId}_sport`)?.value?.trim() || '';
+                        const role = document.getElementById(`${baseId}_role`)?.value || '';
                         if (!fio && !email && !phone && !sport) continue;
                         const payload = {
                             event_id: this.selectedEvent.champn,
                             class: className,
                             sex: sex,
                             distance: String(dist),
-                            participant_data: { fio, email, phone, sport_number: sport },
+                            participant_data: { fio, email, phone, sport_number: sport, team_role: role || undefined },
                             team_name: teamName,
                             team_city: teamCity,
                             team_mode: teamMode

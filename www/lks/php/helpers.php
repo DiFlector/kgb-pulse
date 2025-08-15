@@ -207,12 +207,18 @@ const USER_ROLES = [
 function getBoatCapacity($boatClass) {
     // Нормализуем входные данные
     $boatClass = trim($boatClass);
-    
+
+    // Специальное правило для драконов D-10: общий состав с резервом = 14
+    // 10 гребцов + рулевой + барабанщик + 2 резерва
+    if (stripos($boatClass, 'D-10') !== false || stripos($boatClass, 'D10') !== false) {
+        return 14;
+    }
+
     // Извлекаем число из названия класса
     if (preg_match('/(\d+)/', $boatClass, $matches)) {
         return (int)$matches[1];
     }
-    
+
     // По умолчанию одиночка, если число не найдено
     return 1;
 }

@@ -201,6 +201,9 @@ include '../includes/header.php';
         <button type="button" class="btn btn-warning me-2" onclick="mergeTeamsModal()" title="Объединить команды">
             <i class="bi bi-people"></i> Объединить команды
         </button>
+        <button type="button" class="btn btn-danger" onclick="deleteSelectedTeams()" title="Удалить выбранные команды">
+            <i class="bi bi-trash"></i> Удалить команды
+        </button>
     </div>
 </div>
 
@@ -364,9 +367,7 @@ include '../includes/header.php';
                         </tr>
                         <?php foreach ($team['members'] as $registration): ?>
                         <tr class="table-light" data-team-id="<?= htmlspecialchars($team['teamid'] ?? '') ?>">
-                            <td>
-                                <input type="checkbox" class="form-check-input registration-checkbox" value="<?= $registration['oid'] ?>">
-                            </td>
+                            <td></td>
                             <td><small><?= htmlspecialchars($registration['user_number']) ?></small></td>
                             <td>
                                 <div>
@@ -405,10 +406,24 @@ include '../includes/header.php';
                                             if (isset($details['sex']) && isset($details['dist'])) {
                                                 $sexValues = is_array($details['sex']) ? $details['sex'] : [$details['sex']];
                                                 $distValues = is_array($details['dist']) ? $details['dist'] : [$details['dist']];
+                                                // Если количество элементов совпадает — отображаем по индексам (пол → строка дистанций)
+                                                if (count($sexValues) === count($distValues)) {
+                                                    foreach ($sexValues as $idx => $sex) {
+                                                        $sexLabel = normalizeSexToRussian($sex);
+                                                        $distString = (string)($distValues[$idx] ?? '');
+                                                        $distString = preg_replace('/м/iu', '', $distString);
+                                                        $parts = array_filter(array_map('trim', explode(',', $distString)), function($v){ return $v !== ''; });
+                                                        if (!empty($parts)) {
+                                                            $disciplinesInfo[] = $sexLabel . ' ' . implode(', ', $parts);
+                                                        }
+                                                    }
+                                                } else {
+                                                    // Фолбэк: кросс-продукт (на случай несовместимых старых структур)
                                                 foreach ($distValues as $distance) {
                                                     $cleanDistance = str_replace(['м', 'м', ' '], '', $distance);
                                                     foreach ($sexValues as $sex) {
                                                         $disciplinesInfo[] = $cleanDistance . "м " . normalizeSexToRussian($sex);
+                                                        }
                                                     }
                                                 }
                                             } else {
@@ -479,7 +494,7 @@ include '../includes/header.php';
                         <?php foreach ($individualRegistrations as $registration): ?>
                         <tr>
                             <td>
-                                <input type="checkbox" class="form-check-input registration-checkbox" value="<?= $registration['oid'] ?>">
+                                <input type="checkbox" class="form-check-input individual-registration-checkbox" value="<?= $registration['oid'] ?>">
                             </td>
                             <td><strong><?= htmlspecialchars($registration['user_number']) ?></strong></td>
                             <td>
@@ -727,21 +742,40 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Обработка выбора всех чекбоксов
     document.getElementById('selectAll').addEventListener('change', function() {
-        const checkboxes = document.querySelectorAll('.registration-checkbox');
+        // Выделяем только командные чекбоксы
+        const checkboxes = document.querySelectorAll('.team-checkbox');
         checkboxes.forEach(cb => cb.checked = this.checked);
     });
 });
 
 function exportRegistrations() {
-    const selectedIds = Array.from(document.querySelectorAll('.registration-checkbox:checked'))
-        .map(cb => cb.value);
-    
+    // Сбор ID для экспорта:
+    // - если выбраны командные чекбоксы: экспортируем все регистрации членов этих команд
+    // - если нет выбранных команд, но выбраны персональные чекбоксы (для одиночных лодок) — экспортируем их
+    const teamCheckboxes = Array.from(document.querySelectorAll('.team-checkbox:checked'));
+    let selectedIds = [];
+    if (teamCheckboxes.length > 0) {
+        // Находим все строки участников, принадлежащие выбранным командам
+        const teamIds = teamCheckboxes.map(cb => cb.value);
+        const memberRows = Array.from(document.querySelectorAll('tr[data-team-id]'))
+            .filter(row => teamIds.includes(row.getAttribute('data-team-id')));
+        memberRows.forEach(row => {
+            const regIdInput = row.querySelector('input[data-registration-id]');
+            if (regIdInput) {
+                selectedIds.push(regIdInput.getAttribute('data-registration-id'));
+            }
+        });
+    } else {
+        // Индивидуальные регистрации: ищем чекбоксы в блоке индивидуальных
+        selectedIds = Array.from(document.querySelectorAll('.individual-registration-checkbox:checked')).map(cb => cb.value);
+    }
+
+    selectedIds = selectedIds.filter(Boolean);
     if (selectedIds.length === 0) {
-        alert('Выберите регистрации для экспорта');
+        alert('Выберите команды или индивидуальные регистрации для экспорта');
         return;
     }
     
-    // Формирование ссылки на экспорт
     const params = new URLSearchParams();
     params.append('ids', selectedIds.join(','));
     window.open('/lks/php/organizer/export_registrations.php?' + params.toString(), '_blank');
@@ -1407,6 +1441,65 @@ function getSelectedTeams() {
     });
     
     return selectedTeams;
+}
+
+/**
+ * Удаление выбранных команд
+ */
+function deleteSelectedTeams() {
+    const selectedTeams = getSelectedTeams();
+    const selectedIndividuals = Array.from(document.querySelectorAll('.individual-registration-checkbox:checked'));
+    if (selectedTeams.length === 0 && selectedIndividuals.length === 0) {
+        showNotification('Выберите команды или индивидуальные регистрации для удаления', 'warning');
+        return;
+    }
+
+    // Удаление индивидуальных регистраций (одиночные лодки)
+    if (selectedTeams.length === 0 && selectedIndividuals.length > 0) {
+        if (!confirm('Вы удаляете не команду, а одиночную лодку(и). Хотите продолжить?')) {
+            return;
+        }
+        const ids = selectedIndividuals.map(cb => parseInt(cb.value, 10)).filter(Boolean);
+        Promise.all(ids.map(id => fetch('/lks/php/organizer/delete_registration.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ registrationId: id })
+        }).then(r => r.json()).catch(() => ({ success: false }))))
+        .then(results => {
+            const ok = results.filter(r => r && r.success).length;
+            if (ok > 0) {
+                showNotification(`Удалено одиночных регистраций: ${ok}`, 'success');
+                setTimeout(() => location.reload(), 800);
+            } else {
+                showNotification('Не удалось удалить выбранные одиночные регистрации', 'error');
+            }
+        });
+        return;
+    }
+
+    // Удаление команд
+    if (!confirm('Удалить выбранные команды? Будут удалены также связанные регистрации участников в этих командах.')) {
+        return;
+    }
+    fetch('/lks/php/organizer/delete_teams.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ teams: selectedTeams })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification(`Удалено команд: ${data.deleted || selectedTeams.length}`, 'success');
+            setTimeout(() => location.reload(), 800);
+        } else {
+            showNotification('Ошибка удаления: ' + (data.message || 'Не удалось удалить команды'), 'error');
+        }
+    })
+    .catch(error => {
+        showNotification('Ошибка удаления команд: ' + error.message, 'error');
+    });
 }
 
 /**
@@ -2201,6 +2294,11 @@ function removeMemberFromTeam(memberId, teamId, eventId) {
  */
 function mergeTeamsModal() {
     const selectedTeams = Array.from(document.querySelectorAll('.team-checkbox:checked'));
+    const selectedIndividuals = Array.from(document.querySelectorAll('.individual-registration-checkbox:checked'));
+    if (selectedIndividuals.length > 0 && selectedTeams.length === 0) {
+        showNotification('Нельзя объединять одиночные лодки. Снимите выбор индивидуальных регистраций и выберите команды.', 'error');
+        return;
+    }
     
     if (selectedTeams.length < 2) {
         alert('Выберите минимум 2 команды для объединения');
@@ -2967,6 +3065,17 @@ function showCreateTeamModal(events) {
                             <div class="row">
                                 <div class="col-md-12">
                                     <div class="mb-3">
+                                        <label class="form-label">Пол экипажа *</label>
+                                        <div id="sexesContainer" class="border rounded p-3">
+                                            <p class="text-muted">Выберите мероприятие и класс для отображения доступных вариантов пола</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <div class="mb-3">
                                         <label class="form-label">Дистанции *</label>
                                         <div id="distancesContainer" class="border rounded p-3">
                                             <p class="text-muted">Выберите мероприятие и класс для отображения доступных дистанций</p>
@@ -3028,11 +3137,15 @@ function onEventChange() {
     const eventSelect = document.getElementById('createTeamEvent');
     const classSelect = document.getElementById('createTeamClass');
     const distancesContainer = document.getElementById('distancesContainer');
+    const sexesContainer = document.getElementById('sexesContainer');
     
     if (!eventSelect.value) {
         classSelect.disabled = true;
         classSelect.innerHTML = '<option value="">Сначала выберите мероприятие</option>';
         distancesContainer.innerHTML = '<p class="text-muted">Выберите мероприятие и класс для отображения доступных дистанций</p>';
+        if (sexesContainer) {
+            sexesContainer.innerHTML = '<p class="text-muted">Выберите мероприятие и класс для отображения доступных вариантов пола</p>';
+        }
         return;
     }
     
@@ -3051,8 +3164,11 @@ function onEventChange() {
         classSelect.appendChild(option);
     });
     
-    // Очищаем дистанции
+    // Очищаем пол и дистанции
     distancesContainer.innerHTML = '<p class="text-muted">Выберите класс для отображения доступных дистанций</p>';
+    if (sexesContainer) {
+        sexesContainer.innerHTML = '<p class="text-muted">Выберите класс для отображения доступных вариантов пола</p>';
+    }
 }
 
 /**
@@ -3062,6 +3178,7 @@ function onClassChange() {
     const eventSelect = document.getElementById('createTeamEvent');
     const classSelect = document.getElementById('createTeamClass');
     const distancesContainer = document.getElementById('distancesContainer');
+    const sexesContainer = document.getElementById('sexesContainer');
     
     if (!eventSelect.value || !classSelect.value) return;
     
@@ -3071,57 +3188,131 @@ function onClassChange() {
     
     if (!selectedClass) return;
     
-    // Отладочная информация
-    console.log('Selected class:', selectedClass);
-    console.log('Distances:', selectedClass.dist);
-    
-    // Отображаем дистанции как отдельные чекбоксы
-    let distancesHtml = '<div class="row">';
-    
-    // Собираем все уникальные дистанции
-    const allDistances = new Set();
-    
-    // Обрабатываем дистанции из структуры class_distance
-    if (selectedClass.dist && Array.isArray(selectedClass.dist)) {
-        selectedClass.dist.forEach((distanceString, index) => {
-            console.log('Processing distance string:', distanceString);
-            
-            // Разбиваем строку дистанций на отдельные значения
-            // Убираем "м" и разбиваем по запятой
-            const cleanDistance = distanceString.replace(/м/g, '').trim();
-            const distanceValues = cleanDistance.split(',').map(d => d.trim());
-            
-            console.log('Distance values:', distanceValues);
-            
-            // Добавляем каждую дистанцию в Set (автоматически убирает дубликаты)
-            distanceValues.forEach(distValue => {
-                allDistances.add(distValue);
-            });
+    // Пол: строим чекбоксы по правилам: MIX доступен при выборе М или Ж, но М и Ж одновременно выбирать нельзя
+    const sexes = Array.isArray(selectedClass.sex) ? selectedClass.sex : ['М', 'Ж'];
+    const normalizedSexes = sexes.map(s => (s === 'M' || s === 'Male') ? 'M' : (s === 'W' || s === 'F' || s === 'Female') ? 'W' : s);
+    const hasM = normalizedSexes.includes('M') || normalizedSexes.includes('М');
+    const hasW = normalizedSexes.includes('W') || normalizedSexes.includes('Ж');
+    const hasMIX = normalizedSexes.includes('MIX');
+
+    let sexesHtml = '<div class="d-flex flex-wrap gap-3 align-items-center">';
+    if (hasM) {
+        sexesHtml += `
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" id="sex_M" value="M">
+                <label class="form-check-label" for="sex_M">М</label>
+            </div>`;
+    }
+    if (hasW) {
+        sexesHtml += `
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" id="sex_W" value="W">
+                <label class="form-check-label" for="sex_W">Ж</label>
+            </div>`;
+    }
+    // MIX показываем, если в мероприятии предусмотрен MIX или если есть М или Ж.
+    if (hasMIX || hasM || hasW) {
+        sexesHtml += `
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" id="sex_MIX" value="MIX">
+                <label class="form-check-label" for="sex_MIX">MIX</label>
+            </div>`;
+    }
+    sexesHtml += '</div>';
+    sexesContainer.innerHTML = sexesHtml;
+
+    // Ограничение: нельзя выбирать одновременно М и Ж. Разрешены: [M], [W], [MIX], [M + MIX], [W + MIX]
+    const sexInputs = sexesContainer.querySelectorAll('input[type="checkbox"]');
+    sexInputs.forEach(input => {
+        input.addEventListener('change', () => {
+            const mChecked = sexesContainer.querySelector('#sex_M')?.checked || false;
+            const wChecked = sexesContainer.querySelector('#sex_W')?.checked || false;
+            if (mChecked && wChecked) {
+                // Если включили второй, выключаем предыдущий, отдавая приоритет последнему клику
+                if (input.id === 'sex_M') {
+                    const w = sexesContainer.querySelector('#sex_W');
+                    if (w) w.checked = false;
+                } else if (input.id === 'sex_W') {
+                    const m = sexesContainer.querySelector('#sex_M');
+                    if (m) m.checked = false;
+                }
+                showNotification('Нельзя выбирать одновременно М и Ж. Используйте MIX вместе с одним из полов при необходимости.', 'info');
+            }
+            // MIX не конфликтует ни с М, ни с Ж
+        });
+    });
+
+    // Дистанции: для каждого выбранного пола показываем свои чекбоксы, исходя из структуры dist (по индексам sex)
+    // Секция контейнеров под половые дистанции
+    const perSexDistWrapperId = 'perSexDistancesWrapper';
+    distancesContainer.innerHTML = `<div id="${perSexDistWrapperId}"><p class="text-muted">Выберите пол, затем отметьте дистанции для него</p></div>`;
+
+    function renderDistancesForSelectedSexes() {
+        const wrapper = document.getElementById(perSexDistWrapperId);
+        if (!wrapper) return;
+        const selectedSexes = [];
+        if (sexesContainer.querySelector('#sex_M')?.checked) selectedSexes.push('M');
+        if (sexesContainer.querySelector('#sex_W')?.checked) selectedSexes.push('W');
+        if (sexesContainer.querySelector('#sex_MIX')?.checked) selectedSexes.push('MIX');
+
+        if (selectedSexes.length === 0) {
+            wrapper.innerHTML = '<p class="text-muted">Выберите пол, затем отметьте дистанции для него</p>';
+            return;
+        }
+
+        // Очистка
+        wrapper.innerHTML = '';
+
+        // Маппинг индекса пола по исходной структуре sex[]
+        const originalSexArray = Array.isArray(selectedClass.sex) ? selectedClass.sex : ['М', 'Ж'];
+        const toEng = s => (s === 'М' ? 'M' : (s === 'Ж' ? 'W' : s));
+        const originalSexEng = originalSexArray.map(toEng);
+
+        selectedSexes.forEach(sexCode => {
+            // Находим индекс пола в структуре class_distance
+            const sexIndex = originalSexEng.indexOf(sexCode);
+            // Для MIX: если явно нет индекса, используем агрегированные дистанции (объединение всех доступных)
+            let distancesStr = '';
+            if (sexIndex >= 0 && Array.isArray(selectedClass.dist) && selectedClass.dist[sexIndex]) {
+                distancesStr = String(selectedClass.dist[sexIndex]);
+            } else if (Array.isArray(selectedClass.dist)) {
+                const merged = selectedClass.dist
+                    .map(s => String(s))
+                    .join(',');
+                distancesStr = merged;
+            }
+            const cleanValues = distancesStr
+                .replace(/м/gi, '')
+                .split(',')
+                .map(v => v.trim())
+                .filter(v => v);
+            const uniqueDistances = Array.from(new Set(cleanValues)).sort((a,b) => parseInt(a) - parseInt(b));
+
+            // Рендер секции для конкретного пола
+            const sexLabel = sexCode === 'M' ? 'М' : (sexCode === 'W' ? 'Ж' : 'MIX');
+            let sectionHtml = `<div class="mb-3"><div class="fw-bold mb-2">Дистанции для ${sexLabel}</div><div class="row">`;
+            uniqueDistances.forEach((d, idx) => {
+                const id = `dist_${sexCode}_${idx}`;
+                sectionHtml += `
+            <div class="col-md-4 mb-2">
+                <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="${id}" value="${d}" checked data-sex="${sexCode}">
+                            <label class="form-check-label" for="${id}">${d}м</label>
+                </div>
+                    </div>`;
+    });
+            sectionHtml += '</div></div>';
+            wrapper.insertAdjacentHTML('beforeend', sectionHtml);
         });
     }
     
-    // Создаем чекбоксы для уникальных дистанций
-    const uniqueDistances = Array.from(allDistances).sort((a, b) => parseInt(a) - parseInt(b));
-    console.log('Unique distances:', uniqueDistances);
-    
-    uniqueDistances.forEach((distValue, index) => {
-        const uniqueId = `distance_${index}`;
-        distancesHtml += `
-            <div class="col-md-4 mb-2">
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" id="${uniqueId}" value="${distValue}" checked>
-                    <label class="form-check-label" for="${uniqueId}">
-                        ${distValue}м
-                    </label>
-                </div>
-            </div>
-        `;
+    // Ререндер при изменении полов
+    sexesContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        cb.addEventListener('change', renderDistancesForSelectedSexes);
     });
     
-    distancesHtml += '</div>';
-    
-    console.log('Final HTML:', distancesHtml);
-    distancesContainer.innerHTML = distancesHtml;
+    // Первичный рендер, если ничего не выбрано – показывает подсказку; иначе – секции
+    renderDistancesForSelectedSexes();
 }
 
 /**
@@ -3141,7 +3332,17 @@ async function addParticipant() {
         const data = await response.json();
         
         if (data.success) {
-            showParticipantSelectionModal(data.participants);
+            // Исключаем уже добавленных в список участников, чтобы не дублировать
+            const selectedUserIds = Array.from(document.querySelectorAll('#participantsContainer .participant-item'))
+                .map(el => parseInt(el.dataset.userId, 10))
+                .filter(id => !isNaN(id));
+
+            const filteredParticipants = (data.participants || []).filter(p => {
+                const oid = parseInt(p.oid, 10);
+                return !selectedUserIds.includes(oid);
+            });
+
+            showParticipantSelectionModal(filteredParticipants);
         } else {
             showNotification('Ошибка загрузки участников: ' + data.message, 'error');
         }
@@ -3223,6 +3424,12 @@ function selectParticipant(participant) {
 function addParticipantToList(participant) {
     const container = document.getElementById('participantsContainer');
     const countElement = document.getElementById('selectedParticipantsCount');
+    // Защита от повторного добавления одного и того же участника
+    const alreadyAdded = container.querySelector(`.participant-item[data-user-id="${participant.oid}"]`);
+    if (alreadyAdded) {
+        showNotification('Этот участник уже добавлен в команду', 'warning');
+        return;
+    }
     
     // Создаем элемент участника
     const participantElement = document.createElement('div');
@@ -3303,12 +3510,43 @@ async function saveTeam() {
         return;
     }
     
-    // Получаем выбранные дистанции
-    const distanceCheckboxes = document.querySelectorAll('#distancesContainer input[type="checkbox"]:checked');
-    const distances = Array.from(distanceCheckboxes).map(cb => cb.value);
+    // Собираем выбранные полы и их дистанции
+    const sexMChecked = document.getElementById('sex_M')?.checked || false;
+    const sexWChecked = document.getElementById('sex_W')?.checked || false;
+    const sexMIXChecked = document.getElementById('sex_MIX')?.checked || false;
+    if (!sexMChecked && !sexWChecked && !sexMIXChecked) {
+        showNotification('Выберите пол экипажа', 'error');
+        return;
+    }
+
+    // Правило: нельзя одновременно М и Ж
+    if (sexMChecked && sexWChecked) {
+        showNotification('Нельзя выбирать одновременно М и Ж. Разрешено: М; Ж; М+MIX; Ж+MIX; MIX', 'error');
+        return;
+    }
+
+
+    // Для каждого выбранного пола собираем отмеченные дистанции и формируем строку через запятую
+    const perSexDistances = {};
+    [['M', sexMChecked], ['W', sexWChecked], ['MIX', sexMIXChecked]].forEach(([code, checked]) => {
+        if (!checked) return;
+        const boxes = document.querySelectorAll(`#distancesContainer input[type="checkbox"][data-sex="${code}"]:checked`);
+        const values = Array.from(boxes).map(cb => cb.value.trim()).filter(Boolean);
+        perSexDistances[code] = values.join(', ');
+    });
     
-    if (distances.length === 0) {
-        showNotification('Выберите хотя бы одну дистанцию', 'error');
+    // Формируем массив выбранных полов в требуемом порядке и массив дистанций, выровненных по половому массиву
+    const selectedSexes = [];
+    if (sexMChecked) selectedSexes.push('M');
+    if (sexWChecked) selectedSexes.push('W');
+    if (sexMIXChecked) selectedSexes.push('MIX');
+
+    const distances = selectedSexes.map(code => perSexDistances[code] || '');
+    
+    // Проверка: должна быть хотя бы одна дистанция в сумме
+    const anyDistance = distances.some(s => (s || '').trim().length > 0);
+    if (!anyDistance) {
+        showNotification('Выберите хотя бы одну дистанцию для выбранного пола', 'error');
         return;
     }
     
@@ -3343,6 +3581,7 @@ async function saveTeam() {
                 teamName: teamName,
                 teamCity: teamCity,
                 participants: participants,
+                sexes: selectedSexes,
                 distances: distances
             })
         });

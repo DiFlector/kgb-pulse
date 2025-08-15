@@ -36,6 +36,7 @@ $isSuperUser = $auth->isSuperUser();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="<?= htmlspecialchars(generateCSRFToken()) ?>">
     <title><?= htmlspecialchars($pageTitle ?? 'KGB-Pulse') ?></title>
     
     <!-- Favicon -->
@@ -200,6 +201,7 @@ $isSuperUser = $auth->isSuperUser();
                         'submenu' => [
                             ['href' => '/lks/enter/user/', 'icon' => 'bi bi-house', 'title' => 'Главная'],
                             ['href' => '/lks/enter/user/calendar.php', 'icon' => 'bi bi-calendar3', 'title' => 'Календарь'],
+                            ['href' => '/lks/enter/user/registrations.php', 'icon' => 'bi bi-clipboard-check', 'title' => 'Мои регистрации'],
                             ['href' => '/lks/enter/common/profile.php', 'icon' => 'bi bi-person-circle', 'title' => 'Профиль'],
                             ['href' => '/lks/enter/user/statistics.php', 'icon' => 'bi bi-trophy', 'title' => 'Моя статистика'],
                         ]
@@ -255,6 +257,7 @@ $isSuperUser = $auth->isSuperUser();
                     $menu = [
                         ['href' => '/lks/enter/user/', 'icon' => 'bi bi-house', 'title' => 'Главная'],
                         ['href' => '/lks/enter/user/calendar.php', 'icon' => 'bi bi-calendar3', 'title' => 'Календарь'],
+                        ['href' => '/lks/enter/user/registrations.php', 'icon' => 'bi bi-clipboard-check', 'title' => 'Мои регистрации'],
                         ['href' => '/lks/enter/common/profile.php', 'icon' => 'bi bi-person-circle', 'title' => 'Профиль'],
                     ];
                     break;

@@ -401,7 +401,22 @@ class EventRegistration
                 ];
             }
 
+            // Определяем статус заявки для командных лодок:
+            // если команда ещё не укомплектована до persons_all — "Ожидание команды",
+            // если достигнуто persons_all — "В очереди"
             $status = 'В очереди';
+            if ($teamId) {
+                $teamInfo = $this->db->fetchOne("SELECT persons_all FROM teams WHERE oid = ?", [$teamId]);
+                $countRow = $this->db->fetchOne("SELECT COUNT(DISTINCT users_oid) AS cnt FROM listreg WHERE teams_oid = ?", [$teamId]);
+                $expectedAll = isset($teamInfo['persons_all']) ? (int)$teamInfo['persons_all'] : 0;
+                $currentCount = isset($countRow['cnt']) ? (int)$countRow['cnt'] : 0;
+                $willBeCount = $currentCount + 1; // учитываем текущую запись
+                if ($expectedAll > 0 && $willBeCount < $expectedAll) {
+                    $status = 'Ожидание команды';
+                } else {
+                    $status = 'В очереди';
+                }
+            }
             $cost = $event['defcost'] ?? '0';
             $role = $participantData['team_role'] ?? 'участник';
 
@@ -836,6 +851,15 @@ class EventRegistration
             }
             if ($teamOid) {
                 $this->updateTeamParticipantCount($teamOid['oid']);
+                // Если после добавления команда укомплектована, обновим все её записи на статус "В очереди"
+                $teamInfo = $this->db->fetchOne("SELECT persons_all FROM teams WHERE oid = ?", [$teamOid['oid']]);
+                $countRow = $this->db->fetchOne("SELECT COUNT(DISTINCT users_oid) AS cnt FROM listreg WHERE teams_oid = ?", [$teamOid['oid']]);
+                $expectedAll = isset($teamInfo['persons_all']) ? (int)$teamInfo['persons_all'] : 0;
+                $currentCount = isset($countRow['cnt']) ? (int)$countRow['cnt'] : 0;
+                if ($expectedAll > 0 && $currentCount >= $expectedAll) {
+                    $this->db->prepare("UPDATE listreg SET status = 'В очереди' WHERE teams_oid = ?")
+                        ->execute([$teamOid['oid']]);
+                }
             }
             // Для групповых лодок добавление членов команды выполняется в другом потоке логики
             $this->db->commit();

@@ -39,6 +39,7 @@ try {
     $teamCity = $input['teamCity'] ?? null;
     $participants = $input['participants'] ?? [];
     $distances = $input['distances'] ?? [];
+    $sexesInput = $input['sexes'] ?? null; // ['M','W','MIX'] в порядке, соответствующем массиву distances
     
     // На старте проверяем только обязательные всегда параметры
     if (!$eventId || !$classType || empty($participants)) {
@@ -63,7 +64,7 @@ try {
             throw new Exception('Мероприятие не найдено');
         }
         
-        // Проверяем, что класс существует в мероприятии
+    // Проверяем, что класс существует в мероприятии
         $classDistance = json_decode($event['class_distance'], true);
         if (!isset($classDistance[$classType])) {
             throw new Exception('Указанный класс не поддерживается данным мероприятием');
@@ -113,11 +114,45 @@ try {
         }
         $teamOid = (int)$createdTeam['oid'];
         
-        // Создаем discipline для команды (все дистанции для выбранного класса)
+        // Валидируем и нормализуем выбранные полы; если не переданы, используем полы из class_distance
+        $allowedSexValues = ['M', 'W', 'MIX'];
+        $selectedSexes = [];
+        if (is_array($sexesInput) && !empty($sexesInput)) {
+            foreach ($sexesInput as $sx) {
+                $sx = strtoupper(trim($sx));
+                if (!in_array($sx, $allowedSexValues, true)) {
+                    throw new Exception('Недопустимое значение пола: ' . $sx);
+                }
+                $selectedSexes[] = $sx;
+            }
+            // Правило: нельзя одновременно M и W
+            if (in_array('M', $selectedSexes, true) && in_array('W', $selectedSexes, true)) {
+                throw new Exception('Нельзя выбирать одновременно М и Ж');
+            }
+        } else {
+            // Фолбэк на структуру мероприятия; нормализуем в английские коды
+            $fallbackSex = $classDistance[$classType]['sex'] ?? ['М', 'Ж'];
+            $selectedSexes = array_map(function ($s) {
+                $s = trim($s);
+                if ($s === 'М' || strtoupper($s) === 'M' || strcasecmp($s, 'Male') === 0) return 'M';
+                if ($s === 'Ж' || strtoupper($s) === 'W' || strcasecmp($s, 'F') === 0 || strcasecmp($s, 'Female') === 0) return 'W';
+                if (strtoupper($s) === 'MIX' || strcasecmp($s, 'Смешанные') === 0) return 'MIX';
+                return strtoupper($s);
+            }, (array)$fallbackSex);
+        }
+
+        // Выравниваем distances с выбранными полами: distances[i] — строка "200, 500" для selectedSexes[i]
+        // Если distances короче, дополним пустыми строками
+        $alignedDistances = [];
+        foreach (array_values($selectedSexes) as $idx => $sx) {
+            $alignedDistances[$idx] = isset($distances[$idx]) ? trim((string)$distances[$idx]) : '';
+        }
+
+        // Создаем discipline для команды в требуемом формате
         $discipline = [
             $classType => [
-                'sex' => $classDistance[$classType]['sex'] ?? ['М', 'Ж'],
-                'dist' => $distances
+                'sex' => $selectedSexes,
+                'dist' => $alignedDistances
             ]
         ];
         
